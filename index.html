@@ -1,0 +1,1266 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Supervisor de Operaciones Ontime Cocinas MX</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --border: #1e1e2e;
+    --accent: #7c6af7;
+    --accent2: #f76a8c;
+    --text: #e8e8f0;
+    --muted: #5a5a7a;
+    --success: #4ade80;
+    --warning: #fbbf24;
+    --danger: #f87171;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'Syne', sans-serif;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Grid background */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(124,106,247,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(124,106,247,0.04) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: min(1680px, 98vw);
+    margin: 0 auto;
+    padding: 40px clamp(16px, 3vw, 32px);
+  }
+
+  header {
+    display: flex;
+    align-items: flex-start;
+    gap: 20px;
+    margin-bottom: 48px;
+  }
+
+  .logo-badge {
+    width: 52px;
+    height: 52px;
+    border-radius: 14px;
+    flex-shrink: 0;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(10, 10, 15, 0.6);
+    box-shadow: 0 0 24px rgba(124, 106, 247, 0.25);
+  }
+
+  .logo-badge img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+  }
+
+  h1 {
+    font-size: 28px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    line-height: 1.1;
+    color: #ffffff;
+  }
+
+  h1 span.title-ontime {
+    color: #ffffff;
+    -webkit-text-fill-color: #ffffff;
+  }
+
+  /* MX país: M roja, X verde */
+  .title-mx {
+    display: inline-block;
+    margin-left: 0.2em;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+  }
+
+  .title-mx .title-mx-m {
+    color: #dc2626;
+  }
+
+  .title-mx .title-mx-x {
+    color: #16a34a;
+  }
+
+  .subtitle {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.72);
+    margin-top: 6px;
+    letter-spacing: 0.5px;
+  }
+
+  /* Config panel */
+  .config-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px;
+    margin-bottom: 32px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .config-panel::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: #22c55e;
+  }
+
+  .config-title {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: #ffffff;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 20px;
+  }
+
+  .config-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .field.full { grid-column: 1 / -1; }
+
+  label {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.85);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  input, select {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    width: 100%;
+  }
+
+  input:focus, select:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(124,106,247,0.15);
+  }
+
+  input::placeholder { color: var(--muted); }
+
+  select option { background: var(--surface); }
+
+  .btn-row {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+  }
+
+  .btn {
+    padding: 11px 24px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    font-family: var(--sans);
+    font-weight: 700;
+    font-size: 14px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .btn-primary {
+    background: linear-gradient(135deg, var(--accent), #9b6af7);
+    color: #fff;
+    box-shadow: 0 4px 20px rgba(124,106,247,0.35);
+  }
+
+  .btn-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 28px rgba(124,106,247,0.5);
+  }
+
+  .btn-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  .btn-secondary {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+  }
+
+  .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+
+  .app-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 24px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 0;
+  }
+
+  .app-tab {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 12px 20px;
+    border: none;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.5);
+    cursor: pointer;
+    margin-bottom: -1px;
+    transition: color 0.2s, border-color 0.2s;
+  }
+
+  .app-tab:hover { color: rgba(255, 255, 255, 0.85); }
+
+  .app-tab.active {
+    color: #fff;
+    border-bottom-color: var(--accent);
+  }
+
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  .supervisor-panel {
+    background: var(--surface);
+    border: 1px solid rgba(34, 197, 94, 0.28);
+    border-radius: 16px;
+    padding: 22px;
+    margin-bottom: 0;
+  }
+
+  .supervisor-title {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: #ffffff;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 14px;
+  }
+
+  .supervisor-help {
+    color: rgba(255, 255, 255, 0.72);
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.5;
+    margin-bottom: 16px;
+  }
+
+  .supervisor-actions {
+    display: flex;
+    align-items: end;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .supervisor-actions .field {
+    min-width: 180px;
+  }
+
+  .supervisor-results {
+    display: none;
+    margin-top: 16px;
+  }
+
+  .supervisor-results.show { display: block; }
+
+  .supervisor-summary {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.8);
+    margin-bottom: 10px;
+  }
+
+  .supervisor-card {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px;
+    margin-top: 10px;
+    background: rgba(10, 10, 15, 0.45);
+  }
+
+  .supervisor-card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 8px;
+  }
+
+  .supervisor-card-title { font-weight: 700; }
+
+  .supervisor-card-meta {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.72);
+    margin-top: 3px;
+  }
+
+  .supervisor-card-body {
+    font-size: 13px;
+    line-height: 1.5;
+    color: rgba(255, 255, 255, 0.88);
+  }
+
+  .supervisor-card-section {
+    border-left: 2px solid rgba(34, 197, 94, 0.45);
+    margin-top: 10px;
+    padding: 8px 0 8px 12px;
+    background: rgba(34, 197, 94, 0.04);
+    border-radius: 0 8px 8px 0;
+  }
+
+  .sales-process-section {
+    border-left-color: rgba(124, 106, 247, 0.55);
+    background: rgba(124, 106, 247, 0.06);
+  }
+
+  .risk-bajo { background: rgba(74,222,128,0.12); color: var(--success); }
+  .risk-medio { background: rgba(251,191,36,0.12); color: var(--warning); }
+  .risk-alto, .risk-grave { background: rgba(248,113,113,0.14); color: var(--danger); }
+
+  .reports-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 22px;
+  }
+
+  .reports-panel-title {
+    font-size: 17px;
+    font-weight: 800;
+    margin-bottom: 4px;
+  }
+
+  .reports-panel-sub {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.55);
+    margin-bottom: 18px;
+  }
+
+  .reports-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: flex-end;
+    margin-bottom: 20px;
+  }
+
+  .reports-filters .field { min-width: 160px; }
+
+  .reports-summary-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 22px;
+  }
+
+  .reports-chip {
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: rgba(10, 10, 15, 0.5);
+    color: rgba(255, 255, 255, 0.75);
+  }
+
+  .reports-branch-block {
+    margin-bottom: 32px;
+  }
+
+  .reports-branch-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .reports-branch-name {
+    font-size: 16px;
+    font-weight: 800;
+  }
+
+  .reports-branch-count {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.5);
+  }
+
+  .reports-risk-section {
+    margin-bottom: 20px;
+  }
+
+  .reports-risk-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+
+  .reports-risk-title {
+    font-family: var(--mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: rgba(255, 255, 255, 0.65);
+  }
+
+  .reports-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 12px;
+  }
+
+  .reports-empty {
+    text-align: center;
+    padding: 40px 16px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.5);
+    border: 1px dashed var(--border);
+    border-radius: 12px;
+  }
+
+  .followup-status-ok { background: rgba(74,222,128,0.14); color: var(--success); }
+  .followup-status-warn { background: rgba(251,191,36,0.14); color: var(--warning); }
+  .followup-status-bad { background: rgba(248,113,113,0.14); color: var(--danger); }
+  .followup-status-muted { background: rgba(90,90,122,0.2); color: var(--muted); }
+
+  .followup-section { margin-bottom: 28px; }
+
+  .followup-section-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+
+  .followup-table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+  }
+
+  .followup-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+
+  .followup-table th {
+    font-family: var(--mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: rgba(255, 255, 255, 0.55);
+    text-align: left;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(10, 10, 15, 0.6);
+  }
+
+  .followup-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid rgba(30, 30, 46, 0.8);
+    vertical-align: top;
+  }
+
+  .followup-table tr:last-child td { border-bottom: none; }
+
+  .followup-id {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.45);
+    margin-top: 3px;
+  }
+
+  .followup-changes {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.6);
+    margin-top: 4px;
+  }
+
+  /* Status */
+  .status-bar {
+    display: none;
+    align-items: center;
+    gap: 10px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .status-bar.active { display: flex; }
+
+  .spinner {
+    width: 14px; height: 14px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    flex-shrink: 0;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Error */
+  .error-box {
+    display: none;
+    background: rgba(248,113,113,0.1);
+    border: 1px solid rgba(248,113,113,0.3);
+    border-radius: 10px;
+    padding: 14px 18px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--danger);
+    margin-bottom: 24px;
+  }
+
+  .error-box.show { display: block; }
+
+  /* Stats row */
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-bottom: 28px;
+  }
+
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    text-align: center;
+  }
+
+  .stat-value {
+    font-size: 32px;
+    font-weight: 800;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .stat-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.88);
+    letter-spacing: 1px;
+    margin-top: 4px;
+    text-transform: uppercase;
+  }
+
+  /* Toolbar */
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+
+  .search-input {
+    flex: 1;
+    min-width: 220px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 9px 14px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    outline: none;
+  }
+
+  .search-input:focus { border-color: var(--accent); }
+
+  .sort-select {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 9px 14px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 12px;
+    outline: none;
+    cursor: pointer;
+  }
+
+  .export-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    border-radius: 8px;
+    padding: 9px 16px;
+    cursor: pointer;
+    font-family: var(--mono);
+    font-size: 12px;
+    transition: all 0.2s;
+  }
+
+  .export-btn:hover { border-color: var(--success); color: var(--success); }
+
+  /* Table */
+  .table-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    /* auto: si algo no cabe, scroll horizontal; evita recortar enlaces largos */
+    overflow-x: auto;
+    overflow-y: visible;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  table {
+    width: 100%;
+    min-width: 1320px;
+    table-layout: fixed;
+    border-collapse: collapse;
+  }
+
+  thead {
+    background: rgba(124,106,247,0.08);
+    border-bottom: 1px solid var(--border);
+  }
+
+  th {
+    padding: 14px clamp(14px, 1.8vw, 22px);
+    text-align: left;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: #ffffff;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    font-weight: 600;
+    cursor: pointer;
+    user-select: none;
+    white-space: normal;
+    line-height: 1.25;
+    vertical-align: bottom;
+    hyphens: none;
+  }
+
+  th:hover { color: #c4b8ff; }
+
+  /* Anchos por columna (% sobre la tabla ancha) */
+  .table-wrap table th:nth-child(1),
+  .table-wrap table td:nth-child(1) {
+    width: 17%;
+    min-width: 200px;
+    overflow-wrap: normal;
+    word-break: normal;
+  }
+
+  .table-wrap table th:nth-child(2),
+  .table-wrap table td:nth-child(2) {
+    width: 11%;
+    min-width: 132px;
+  }
+
+  .table-wrap table th:nth-child(3),
+  .table-wrap table td:nth-child(3) {
+    width: 11%;
+    min-width: 124px;
+  }
+
+  .table-wrap table th:nth-child(4),
+  .table-wrap table td:nth-child(4) {
+    width: 13%;
+    min-width: 128px;
+  }
+
+  .table-wrap table th:nth-child(5),
+  .table-wrap table td:nth-child(5) {
+    width: 11%;
+    min-width: 108px;
+  }
+
+  .table-wrap table th:nth-child(6),
+  .table-wrap table td:nth-child(6) {
+    width: 9%;
+    min-width: 96px;
+  }
+
+  /* Conversación: URL largos; permite partir solo en esta columna */
+  .table-wrap table th:nth-child(7),
+  .table-wrap table td.conv-url-cell {
+    width: 24%;
+    min-width: 220px;
+  }
+
+  .table-wrap table th:nth-child(8),
+  .table-wrap table td:nth-child(8) {
+    width: 4%;
+    min-width: 40px;
+    text-align: center;
+  }
+
+  tr {
+    border-bottom: 1px solid var(--border);
+    transition: background 0.15s;
+  }
+
+  tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: rgba(124,106,247,0.05); }
+
+  td {
+    padding: 14px clamp(14px, 1.8vw, 22px);
+    font-size: 13px;
+    vertical-align: middle;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+  }
+
+  .conv-url-cell {
+    font-family: var(--mono);
+    font-size: 11px;
+    line-height: 1.4;
+    vertical-align: top;
+    min-width: 0;
+  }
+
+  a.conv-link {
+    color: #a898ff;
+    display: inline-block;
+    max-width: 100%;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+    white-space: normal;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  a.conv-link:hover {
+    color: #d4ccff;
+  }
+
+  .contact-cell {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .avatar {
+    width: 34px; height: 34px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 700;
+    flex-shrink: 0;
+    color: white;
+  }
+
+  .contact-name {
+    font-weight: 700;
+    font-size: 13px;
+    line-height: 1.35;
+    word-break: normal;
+    overflow-wrap: normal;
+    hyphens: manual;
+  }
+
+  .contact-id {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+
+  .time-cell {
+    font-family: var(--mono);
+    font-size: 12px;
+  }
+
+  .time-abs {
+    color: var(--text);
+  }
+
+  .time-rel {
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 3px;
+  }
+
+  .badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+
+  .badge-green { background: rgba(74,222,128,0.12); color: var(--success); }
+  .badge-yellow { background: rgba(251,191,36,0.12); color: var(--warning); }
+  .badge-red { background: rgba(248,113,113,0.12); color: var(--danger); }
+  .badge-gray { background: rgba(90,90,122,0.2); color: var(--muted); }
+  .badge-inactive {
+    background: rgba(167, 139, 250, 0.16);
+    color: #c4b5fd;
+    margin-right: 6px;
+  }
+
+  .supervisor-card-badges {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    justify-content: flex-end;
+  }
+
+  .field-static .field-value {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.9);
+    padding: 8px 0 2px;
+  }
+
+  .field-hint {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.5);
+    line-height: 1.4;
+    max-width: 280px;
+  }
+
+  .supervisor-debug-panel {
+    margin-top: 16px;
+    padding: 12px 14px;
+    border: 1px solid rgba(124, 106, 247, 0.35);
+    border-radius: 10px;
+    background: rgba(12, 12, 20, 0.85);
+  }
+
+  .supervisor-debug-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+  }
+
+  .supervisor-debug-title {
+    font-weight: 600;
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.9);
+  }
+
+  .supervisor-debug-run-id {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .btn-sm {
+    padding: 4px 10px;
+    font-size: 11px;
+    margin-left: auto;
+  }
+
+  .supervisor-debug-summary {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.75);
+    margin-bottom: 8px;
+    line-height: 1.5;
+  }
+
+  .supervisor-debug-log {
+    max-height: 320px;
+    overflow: auto;
+    margin: 0;
+    padding: 10px;
+    font-family: var(--mono);
+    font-size: 11px;
+    line-height: 1.45;
+    color: rgba(255, 255, 255, 0.82);
+    background: rgba(0, 0, 0, 0.35);
+    border-radius: 6px;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .log-line-error { color: #f87171; }
+  .log-line-warn { color: #fbbf24; }
+  .log-line-info { color: #a5b4fc; }
+  .log-line-debug { color: rgba(255, 255, 255, 0.55); }
+
+  .direction-out { color: var(--accent); font-size: 16px; }
+  .direction-in { color: var(--accent2); font-size: 16px; }
+
+  .empty-state {
+    text-align: center;
+    padding: 60px 24px;
+    color: var(--muted);
+  }
+
+  .empty-icon { font-size: 40px; margin-bottom: 14px; }
+  .empty-text { font-size: 14px; font-family: var(--mono); }
+
+  .results-hidden { display: none; }
+
+  body.auth-pending .container {
+    visibility: hidden;
+  }
+
+  .auth-user-bar {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+  }
+
+  .auth-user-email {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .auth-logout-btn {
+    flex-shrink: 0;
+  }
+
+  header {
+    flex-wrap: wrap;
+  }
+
+  .ids-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px;
+    margin-bottom: 16px;
+  }
+
+  .ids-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+
+  .ids-title {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: #ffffff;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  .ids-count {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--accent);
+  }
+
+  .ids-list {
+    font-family: var(--mono);
+    font-size: 12px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px;
+    max-height: 170px;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  /* Pagination */
+  .pagination {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 20px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .page-btns { display: flex; gap: 8px; }
+
+  .page-btn {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 14px;
+    color: var(--muted);
+    cursor: pointer;
+    font-family: var(--mono);
+    font-size: 12px;
+    transition: all 0.2s;
+  }
+
+  .page-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  .page-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+  .page-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(124,106,247,0.1); }
+
+  @media (max-width: 640px) {
+    .config-grid { grid-template-columns: 1fr; }
+    .stats-row { grid-template-columns: 1fr; }
+    h1 { font-size: 22px; }
+  }
+</style>
+</head>
+<body class="auth-pending">
+<div class="container">
+
+  <header>
+    <div class="logo-badge">
+      <img src="/images/logo.webp" alt="Ontime Cocinas" width="52" height="52">
+    </div>
+    <div>
+      <h1>AI Supervisor de Calidad <span class="title-ontime">OC</span> <span class="title-mx" title="México"><span class="title-mx-m">M</span><span class="title-mx-x">X</span></span></h1>
+    </div>
+    <div id="auth-user-bar" class="auth-user-bar" hidden></div>
+  </header>
+
+  <div class="error-box" id="error-box"></div>
+
+  <nav class="app-tabs" role="tablist" aria-label="Secciones principales">
+    <button type="button" class="app-tab active" id="tab-btn-supervisor" role="tab" aria-selected="true" aria-controls="tab-supervisor" onclick="switchAppTab('supervisor')">Supervisor AI</button>
+    <button type="button" class="app-tab" id="tab-btn-reportes" role="tab" aria-selected="false" aria-controls="tab-reportes" onclick="switchAppTab('reportes')">Reportes</button>
+    <button type="button" class="app-tab" id="tab-btn-seguimiento" role="tab" aria-selected="false" aria-controls="tab-seguimiento" onclick="switchAppTab('seguimiento')">Seguimiento diario</button>
+  </nav>
+
+  <div id="tab-supervisor" class="tab-panel active" role="tabpanel" aria-labelledby="tab-btn-supervisor">
+    <div class="supervisor-panel">
+      <div class="supervisor-title">Supervisor AI de conversaciones</div>
+      <div class="supervisor-help">
+        Trae de Chatwoot solo conversaciones y mensajes con actividad en las últimas 24 horas. El historial previo se toma de Supabase para el análisis comparativo.
+      </div>
+      <div class="supervisor-actions">
+        <div class="field">
+          <label>Sucursal / Canal</label>
+          <select id="cw-branch">
+            <option value="49" selected>ID 49 · HmoOntime</option>
+            <option value="48">ID 48 · nogontime</option>
+            <option value="51">ID 51 · cenontime</option>
+            <option value="52">ID 52 · FB Hermosillo OTC</option>
+          </select>
+        </div>
+        <div class="field field-static">
+          <label>Alcance del análisis</label>
+          <div class="field-value">Solo actividad de las últimas 24 horas en Chatwoot</div>
+          <div class="field-hint">Historial largo desde reportes guardados en Supabase. Etiqueta +2 días sin actividad con interés real.</div>
+        </div>
+        <button class="btn btn-primary" id="btn-ai-analyze" type="button" onclick="runSupervisorAnalysis()">Analizar con AI</button>
+        <button class="btn btn-secondary" type="button" onclick="goToReportsTab()">Ver reportes</button>
+        <div class="status-bar" id="status-bar">
+          <div class="spinner"></div>
+          <span id="status-text">Conectando...</span>
+        </div>
+      </div>
+      <div id="supervisor-debug-panel" class="supervisor-debug-panel" hidden>
+        <div class="supervisor-debug-head">
+          <span class="supervisor-debug-title">Log de ejecución</span>
+          <span id="supervisor-debug-run-id" class="supervisor-debug-run-id"></span>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="toggleSupervisorDebug()">Ocultar</button>
+        </div>
+        <div id="supervisor-debug-summary" class="supervisor-debug-summary"></div>
+        <pre id="supervisor-debug-log" class="supervisor-debug-log"></pre>
+      </div>
+      <div id="supervisor-results" class="supervisor-results"></div>
+    </div>
+  </div>
+
+  <div id="tab-reportes" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-reportes" hidden>
+    <section class="reports-panel">
+      <div class="reports-panel-title">Reportes generados</div>
+      <div class="reports-panel-sub">Análisis guardados en Supabase · agrupados por sucursal y nivel de riesgo</div>
+      <div class="reports-filters">
+        <div class="field">
+          <label for="reports-branch">Sucursal</label>
+          <select id="reports-branch" onchange="loadReportsTab()">
+            <option value="">Todas las sucursales</option>
+            <option value="49">HmoOntime (49)</option>
+            <option value="48">nogontime (48)</option>
+            <option value="51">cenontime (51)</option>
+            <option value="52">FB Hermosillo OTC (52)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="reports-risk">Nivel de riesgo</label>
+          <select id="reports-risk" onchange="loadReportsTab()">
+            <option value="">Todos los niveles</option>
+            <option value="grave">Grave</option>
+            <option value="alto">Alto</option>
+            <option value="medio">Medio</option>
+            <option value="bajo">Bajo</option>
+          </select>
+        </div>
+        <div class="field" style="flex:1;min-width:200px">
+          <label for="reports-search">Buscar</label>
+          <input class="search-input" type="text" id="reports-search" placeholder="Cliente, teléfono, resumen..." oninput="applyReportsSearch()">
+        </div>
+        <div class="field">
+          <label for="reports-limit">Cantidad</label>
+          <select id="reports-limit" onchange="loadReportsTab()">
+            <option value="50">50</option>
+            <option value="100" selected>100</option>
+            <option value="200">200</option>
+          </select>
+        </div>
+        <button class="btn btn-secondary" type="button" onclick="loadReportsTab()">Actualizar</button>
+      </div>
+      <div class="reports-summary-row" id="reports-summary"></div>
+      <div id="reports-content"></div>
+    </section>
+  </div>
+
+  <div id="tab-seguimiento" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-seguimiento" hidden>
+    <section class="reports-panel">
+      <div class="reports-panel-title">Seguimiento diario</div>
+      <div class="reports-panel-sub">
+        Compara snapshots guardados (hoy vs ayer) con datos de Chatwoot · etapas: asesor de ventas y cotización pendiente
+      </div>
+      <div class="reports-filters">
+        <div class="field">
+          <label for="followup-branch">Sucursal</label>
+          <select id="followup-branch">
+            <option value="">Todas</option>
+            <option value="49">HmoOntime (49)</option>
+            <option value="48">nogontime (48)</option>
+            <option value="51">cenontime (51)</option>
+            <option value="52">FB Hermosillo OTC (52)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="followup-stages">Etapas</label>
+          <select id="followup-stages">
+            <option value="asesor_ventas,cotizacion_pendiente" selected>Asesor ventas + Cotización pendiente</option>
+            <option value="asesor_ventas">Solo asesor_ventas</option>
+            <option value="cotizacion_pendiente">Solo cotización pendiente</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="followup-limit">Máx. conversaciones</label>
+          <select id="followup-limit">
+            <option value="50">50</option>
+            <option value="100" selected>100</option>
+            <option value="200">200</option>
+          </select>
+        </div>
+        <button class="btn btn-primary" type="button" onclick="syncFollowupToday()">Sincronizar hoy (Chatwoot)</button>
+        <button class="btn btn-secondary" type="button" onclick="loadFollowupTab()">Actualizar vista</button>
+      </div>
+      <div class="reports-summary-row" id="followup-summary"></div>
+      <div id="followup-content"></div>
+    </section>
+  </div>
+
+  <!-- Results -->
+  <div id="results" class="results-hidden">
+    <div class="stats-row" id="stats-row"></div>
+    <div class="ids-panel">
+      <div class="ids-header">
+        <div>
+          <div class="ids-title">IDs de conversaciones</div>
+          <div class="ids-count" id="ids-count">0 IDs</div>
+        </div>
+        <button class="export-btn" type="button" onclick="copyConversationIds()">Copiar IDs</button>
+      </div>
+      <div class="ids-list" id="ids-list">Sin datos</div>
+    </div>
+
+    <div class="toolbar">
+      <input class="search-input" type="text" id="search-input" placeholder="🔍  Buscar por nombre, email o teléfono..." oninput="applyFilters()">
+      <select class="sort-select" id="sort-select" onchange="applyFilters()">
+        <option value="newest">Más reciente primero</option>
+        <option value="oldest">Más antiguo primero</option>
+        <option value="name">Nombre A-Z</option>
+      </select>
+      <button class="export-btn" onclick="exportCSV()">↓ Exportar CSV</button>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Cliente</th>
+            <th>Teléfono</th>
+            <th>Último msg. enviado (saliente)</th>
+            <th>Asesor</th>
+            <th>Canal / Inbox</th>
+            <th>Estado conv.</th>
+            <th>Conversación</th>
+            <th>Dir.</th>
+          </tr>
+        </thead>
+        <tbody id="table-body"></tbody>
+      </table>
+    </div>
+
+    <div class="pagination">
+      <span id="page-info"></span>
+      <div class="page-btns" id="page-btns"></div>
+    </div>
+  </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="./auth.js"></script>
+<script src="./app.js"></script>
+</body>
+</html>

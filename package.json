@@ -1,0 +1,19 @@
+{
+  "name": "chatwoot_extraction",
+  "version": "1.0.0",
+  "description": "Aplicación web **estática** (HTML + JavaScript) servida por un **único proceso Node.js** que también hace de **proxy** hacia Chatwoot. Consulta la **API REST**, agrupa por **contacto** y muestra un tablero con el último mensaje **saliente** por cliente: **teléfono**, **asesor**, canal, estado, enlace a la conversación en el panel web de Chatwoot y exportación a **CSV**.",
+  "main": "proxy-server.js",
+  "scripts": {
+    "start": "node proxy-server.js",
+    "check": "node --check proxy-server.js && node --check supervisor-logger.js && node --check auth.js && node --check app.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.106.2",
+    "dotenv": "^17.4.2",
+    "openai": "^6.39.0"
+  }
+}

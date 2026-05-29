@@ -1,0 +1,24 @@
+services:
+  chatwoot-dashboard:
+    build: .
+    ports:
+      # Puerto principal (ej. http://localhost:8080); proxy vacío en la UI = mismo origen.
+      - "${HOST_PORT:-8080}:3001"
+      # Mismo servicio en 3001 del host (si «Proxy local» = http://127.0.0.1:3001). Si ya usas node en 3001, comenta esta línea.
+      - "3001:3001"
+    environment:
+      PORT: "3001"
+      HOST: "0.0.0.0"
+      # Base de Chatwoot si el cliente no envía x-chatwoot-base-url (opcional)
+      CHATWOOT_DEFAULT_BASE_URL: "${CHATWOOT_DEFAULT_BASE_URL:-https://app.ontime.chat}"
+      CHATWOOT_ACCOUNT_ID: "${CHATWOOT_ACCOUNT_ID:-1}"
+      CHATWOOT_API_TOKEN: "${CHATWOOT_API_TOKEN:-}"
+      AI_AGENT_SENDER_NAME: "${AI_AGENT_SENDER_NAME:-Super Admin}"
+      ARCHITECT_SENDER_NAMES: "${ARCHITECT_SENDER_NAMES:-Manuel Limon,Kevin Landy,Israel Monge,Abigail Perez}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      OPENAI_MODEL: "${OPENAI_MODEL:-gpt-4o-mini}"
+      SUPABASE_URL: "${SUPABASE_URL:-}"
+      SUPABASE_SERVICE_ROLE_KEY: "${SUPABASE_SERVICE_ROLE_KEY:-}"
+      SUPABASE_ANON_KEY: "${SUPABASE_ANON_KEY:-}"
+      AUTH_REQUIRED: "${AUTH_REQUIRED:-true}"
+      SUPABASE_REPORTS_TABLE: "${SUPABASE_REPORTS_TABLE:-conversation_supervision_reports}"

@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Iniciar sesión · Ontime AI Supervisor</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0a0a0f;
+      --surface: #12121a;
+      --border: #1e1e2e;
+      --accent: #7c6af7;
+      --accent2: #f76a8c;
+      --text: #e8e8f0;
+      --muted: #5a5a7a;
+      --danger: #f87171;
+      --success: #4ade80;
+      --mono: 'IBM Plex Mono', monospace;
+      --sans: 'Syne', sans-serif;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      min-height: 100vh;
+      font-family: var(--sans);
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(124,106,247,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(124,106,247,0.04) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+    }
+    .login-card {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      padding: 36px 32px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+    }
+    .login-logo {
+      width: 56px;
+      height: 56px;
+      border-radius: 14px;
+      overflow: hidden;
+      margin-bottom: 20px;
+      background: rgba(10, 10, 15, 0.6);
+    }
+    .login-logo img { width: 100%; height: 100%; object-fit: contain; }
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 800;
+      margin-bottom: 6px;
+      letter-spacing: -0.02em;
+    }
+    .login-sub {
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 28px;
+      line-height: 1.5;
+    }
+    label {
+      display: block;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    input {
+      width: 100%;
+      padding: 12px 14px;
+      margin-bottom: 16px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: rgba(0, 0, 0, 0.35);
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 14px;
+    }
+    input:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(124, 106, 247, 0.2);
+    }
+    .btn-primary {
+      width: 100%;
+      padding: 13px;
+      border: 2px solid #ffffff;
+      border-radius: 10px;
+      font-family: var(--sans);
+      font-weight: 700;
+      font-size: 14px;
+      cursor: pointer;
+      background: #0a0a0f;
+      color: #ffffff;
+      margin-top: 4px;
+    }
+    .btn-primary:hover:not(:disabled) {
+      background: #1a1a24;
+    }
+    .btn-primary:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+    .login-error {
+      display: none;
+      margin-bottom: 16px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      background: rgba(248, 113, 113, 0.12);
+      color: var(--danger);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+    .login-error.show { display: block; }
+    .login-hint {
+      margin-top: 20px;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.5;
+      text-align: center;
+    }
+    .login-loading {
+      text-align: center;
+      color: var(--muted);
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div class="login-card" id="login-card">
+    <div class="login-loading" id="login-loading">Cargando…</div>
+    <div id="login-form-wrap" hidden>
+      <div class="login-logo">
+        <img src="/images/logo.webp" alt="Ontime" width="56" height="56">
+      </div>
+      <h1>OnTime Cocinas AI Supervisor</h1>
+      <p class="login-sub">Inicia sesión con tu cuenta autorizada.</p>
+      <div class="login-error" id="login-error" role="alert"></div>
+      <form id="login-form" autocomplete="on">
+        <label for="login-email">Correo</label>
+        <input id="login-email" name="email" type="email" required autocomplete="username" placeholder="tu@empresa.com">
+        <label for="login-password">Contraseña</label>
+        <input id="login-password" name="password" type="password" required autocomplete="current-password" placeholder="••••••••">
+        <button type="submit" class="btn-primary" id="login-submit">Entrar</button>
+      </form>
+        </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="./auth.js"></script>
+  <script>
+    (async function () {
+      const loading = document.getElementById('login-loading');
+      const wrap = document.getElementById('login-form-wrap');
+      const form = document.getElementById('login-form');
+      const errorEl = document.getElementById('login-error');
+      const submitBtn = document.getElementById('login-submit');
+
+      function showError(msg) {
+        errorEl.textContent = msg;
+        errorEl.classList.add('show');
+      }
+
+      function clearError() {
+        errorEl.textContent = '';
+        errorEl.classList.remove('show');
+      }
+
+      try {
+        const config = await OntimeAuth.loadConfig();
+        loading.hidden = true;
+        wrap.hidden = false;
+
+        if (!config.authRequired) {
+          showError('Autenticación desactivada (AUTH_REQUIRED=false). Puedes ir a la aplicación sin login.');
+          submitBtn.textContent = 'Ir a la aplicación';
+          submitBtn.type = 'button';
+          submitBtn.onclick = () => { window.location.href = '/'; };
+          document.getElementById('login-email').disabled = true;
+          document.getElementById('login-password').disabled = true;
+          return;
+        }
+
+        if (!config.authClientReady) {
+          showError(config.setupError || 'Falta SUPABASE_ANON_KEY en el archivo .env del servidor. Reinicia tras añadirla.');
+          submitBtn.disabled = true;
+          document.getElementById('login-email').disabled = true;
+          document.getElementById('login-password').disabled = true;
+          return;
+        }
+
+        const client = await OntimeAuth.getClient();
+        const { data: { session } } = await client.auth.getSession();
+        if (session) {
+          const params = new URLSearchParams(window.location.search);
+          window.location.replace(params.get('next') || '/');
+          return;
+        }
+
+        form.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          clearError();
+          submitBtn.disabled = true;
+          const email = document.getElementById('login-email').value.trim();
+          const password = document.getElementById('login-password').value;
+
+          const { error } = await client.auth.signInWithPassword({ email, password });
+          submitBtn.disabled = false;
+
+          if (error) {
+            showError(error.message === 'Invalid login credentials'
+              ? 'Correo o contraseña incorrectos.'
+              : error.message);
+            return;
+          }
+
+          const params = new URLSearchParams(window.location.search);
+          window.location.replace(params.get('next') || '/');
+        });
+      } catch (err) {
+        loading.hidden = true;
+        wrap.hidden = false;
+        showError(err.message || 'Error al iniciar sesión.');
+      }
+    })();
+  </script>
+</body>
+</html>
