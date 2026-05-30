@@ -19,6 +19,19 @@
     --danger: #f87171;
     --mono: 'IBM Plex Mono', monospace;
     --sans: 'Syne', sans-serif;
+    --page-pad-x: clamp(16px, 2vw, 28px);
+    --page-pad-y: clamp(28px, 3vh, 40px);
+    --text-xs: 11px;
+    --text-sm: 12px;
+    --text-base: 13px;
+    --text-md: 14px;
+    --text-lg: 17px;
+    --text-xl: 28px;
+    --text-stat: 32px;
+    --panel-pad: 22px;
+    --radius-panel: 16px;
+    --input-pad: 10px 14px;
+    --btn-pad: 11px 24px;
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -48,9 +61,9 @@
     position: relative;
     z-index: 1;
     width: 100%;
-    max-width: min(1680px, 98vw);
+    max-width: 100%;
     margin: 0 auto;
-    padding: 40px clamp(16px, 3vw, 32px);
+    padding: var(--page-pad-y) var(--page-pad-x);
   }
 
   header {
@@ -81,7 +94,7 @@
   }
 
   h1 {
-    font-size: 28px;
+    font-size: var(--text-xl);
     font-weight: 800;
     letter-spacing: -0.5px;
     line-height: 1.1;
@@ -111,7 +124,7 @@
 
   .subtitle {
     font-family: var(--mono);
-    font-size: 12px;
+    font-size: var(--text-sm);
     color: rgba(255, 255, 255, 0.72);
     margin-top: 6px;
     letter-spacing: 0.5px;
@@ -121,8 +134,8 @@
   .config-panel {
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 16px;
-    padding: 28px;
+    border-radius: var(--radius-panel);
+    padding: var(--panel-pad);
     margin-bottom: 32px;
     position: relative;
     overflow: hidden;
@@ -138,7 +151,7 @@
 
   .config-title {
     font-family: var(--mono);
-    font-size: 11px;
+    font-size: var(--text-xs);
     color: #ffffff;
     letter-spacing: 2px;
     text-transform: uppercase;
@@ -162,7 +175,7 @@
 
   label {
     font-family: var(--mono);
-    font-size: 11px;
+    font-size: var(--text-xs);
     color: rgba(255, 255, 255, 0.85);
     letter-spacing: 1px;
     text-transform: uppercase;
@@ -172,10 +185,10 @@
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: 8px;
-    padding: 10px 14px;
+    padding: var(--input-pad);
     color: var(--text);
     font-family: var(--mono);
-    font-size: 13px;
+    font-size: var(--text-base);
     outline: none;
     transition: border-color 0.2s, box-shadow 0.2s;
     width: 100%;
@@ -197,13 +210,13 @@
   }
 
   .btn {
-    padding: 11px 24px;
+    padding: var(--btn-pad);
     border-radius: 8px;
     border: none;
     cursor: pointer;
     font-family: var(--sans);
     font-weight: 700;
-    font-size: 14px;
+    font-size: var(--text-md);
     transition: all 0.2s;
     display: flex;
     align-items: center;
@@ -586,9 +599,21 @@
   }
 
   .stat-value {
-    font-size: 32px;
+    font-size: var(--text-stat);
     font-weight: 800;
     background: linear-gradient(135deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .stat-value.stat-value-alt-green {
+    background: linear-gradient(135deg, #4ade80, #22d3ee);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .stat-value.stat-value-alt-warm {
+    background: linear-gradient(135deg, #fbbf24, #f87171);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
   }
@@ -665,7 +690,7 @@
 
   table {
     width: 100%;
-    min-width: 1320px;
+    min-width: 100%;
     table-layout: fixed;
     border-collapse: collapse;
   }
@@ -1055,10 +1080,230 @@
   .page-btn:disabled { opacity: 0.3; cursor: not-allowed; }
   .page-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(124,106,247,0.1); }
 
+  /* Desktop: escala moderada (~50% del aumento anterior) */
+  @media (min-width: 1024px) {
+    body { font-size: 15px; }
+
+    :root {
+      --page-pad-x: clamp(20px, 2.2vw, 44px);
+      --page-pad-y: clamp(32px, 2.8vh, 46px);
+      --text-xs: 12px;
+      --text-sm: 13px;
+      --text-base: 14px;
+      --text-md: 15px;
+      --text-lg: 18px;
+      --text-xl: 32px;
+      --text-stat: 38px;
+      --panel-pad: 27px;
+      --radius-panel: 17px;
+      --input-pad: 12px 16px;
+      --btn-pad: 12px 26px;
+    }
+
+    header {
+      margin-bottom: 52px;
+      gap: 22px;
+    }
+
+    .logo-badge {
+      width: 60px;
+      height: 60px;
+      border-radius: 16px;
+    }
+
+    .config-grid {
+      grid-template-columns: repeat(3, 1fr);
+      gap: 18px;
+    }
+
+    .config-panel,
+    .supervisor-panel,
+    .reports-panel {
+      margin-bottom: 30px;
+    }
+
+    .app-tab {
+      font-size: var(--text-sm);
+      padding: 13px 22px;
+    }
+
+    .app-tabs { margin-bottom: 28px; }
+
+    .supervisor-title,
+    .config-title,
+    .ids-title {
+      font-size: var(--text-sm);
+      margin-bottom: 16px;
+    }
+
+    .supervisor-help { font-size: var(--text-base); }
+
+    .supervisor-card {
+      padding: 17px;
+      border-radius: 13px;
+    }
+
+    .supervisor-card-body { font-size: var(--text-base); }
+
+    .supervisor-card-meta { font-size: var(--text-sm); }
+
+    .supervisor-card-title { font-size: var(--text-lg); }
+
+    .reports-panel-title { font-size: 19px; }
+
+    .reports-panel-sub { font-size: var(--text-sm); }
+
+    .reports-grid {
+      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+      gap: 15px;
+    }
+
+    .reports-branch-name { font-size: 18px; }
+
+    .reports-chip {
+      font-size: var(--text-sm);
+      padding: 7px 14px;
+    }
+
+    .stats-row {
+      gap: 18px;
+      margin-bottom: 30px;
+    }
+
+    .stat-card { padding: 24px; }
+
+    .stat-value { font-size: var(--text-stat); }
+
+    .stat-label { font-size: var(--text-sm); }
+
+    .toolbar { margin-bottom: 18px; gap: 14px; }
+
+    .search-input,
+    .sort-select {
+      padding: 10px 16px;
+      font-size: var(--text-base);
+    }
+
+    .export-btn {
+      padding: 10px 18px;
+      font-size: var(--text-sm);
+    }
+
+    .table-wrap {
+      border-radius: var(--radius-panel);
+    }
+
+    th {
+      font-size: var(--text-sm);
+      padding: 16px clamp(15px, 1.65vw, 25px);
+    }
+
+    td {
+      font-size: var(--text-base);
+      padding: 16px clamp(15px, 1.65vw, 25px);
+    }
+
+    .table-wrap table th:nth-child(1),
+    .table-wrap table td:nth-child(1) { min-width: 220px; }
+
+    .table-wrap table th:nth-child(2),
+    .table-wrap table td:nth-child(2) { min-width: 141px; }
+
+    .table-wrap table th:nth-child(3),
+    .table-wrap table td:nth-child(3) { min-width: 132px; }
+
+    .table-wrap table th:nth-child(4),
+    .table-wrap table td:nth-child(4) { min-width: 139px; }
+
+    .table-wrap table th:nth-child(7),
+    .table-wrap table td.conv-url-cell { min-width: 250px; }
+
+    .conv-url-cell,
+    a.conv-link { font-size: var(--text-sm); }
+
+    .avatar {
+      width: 39px;
+      height: 39px;
+      font-size: var(--text-base);
+    }
+
+    .contact-name { font-size: var(--text-md); }
+
+    .contact-id { font-size: var(--text-xs); }
+
+    .time-cell { font-size: var(--text-sm); }
+
+    .badge {
+      font-size: var(--text-xs);
+      padding: 5px 12px;
+    }
+
+    .followup-table { font-size: var(--text-base); }
+
+    .followup-table th {
+      font-size: var(--text-xs);
+      padding: 12px 14px;
+    }
+
+    .followup-table td { padding: 12px 14px; }
+
+    .ids-panel { padding: 17px; }
+
+    .ids-list {
+      font-size: var(--text-sm);
+      max-height: 195px;
+      padding: 12px;
+    }
+
+    .pagination,
+    .page-btn { font-size: var(--text-sm); }
+
+    .page-btn { padding: 7px 16px; }
+
+    .empty-icon { font-size: 46px; }
+
+    .empty-text { font-size: var(--text-md); }
+
+    .field-hint {
+      font-size: var(--text-sm);
+      max-width: none;
+    }
+
+    .auth-user-email {
+      font-size: var(--text-sm);
+      max-width: 320px;
+    }
+
+    .supervisor-debug-log {
+      font-size: var(--text-sm);
+      max-height: 370px;
+    }
+
+    .direction-out,
+    .direction-in { font-size: 18px; }
+  }
+
+  @media (min-width: 1600px) {
+    :root {
+      --text-xl: 34px;
+      --text-stat: 42px;
+      --panel-pad: 29px;
+    }
+
+    .reports-grid {
+      grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+    }
+  }
+
   @media (max-width: 640px) {
     .config-grid { grid-template-columns: 1fr; }
     .stats-row { grid-template-columns: 1fr; }
-    h1 { font-size: 22px; }
+    :root { --text-xl: 22px; }
+  }
+
+  /* Tabla operativa: scroll horizontal solo en pantallas estrechas */
+  @media (max-width: 1023px) {
+    table { min-width: 1100px; }
   }
 </style>
 </head>
@@ -1067,7 +1312,7 @@
 
   <header>
     <div class="logo-badge">
-      <img src="/images/logo.webp" alt="Ontime Cocinas" width="52" height="52">
+      <img src="/images/logo.webp" alt="Ontime Cocinas" width="60" height="60">
     </div>
     <div>
       <h1>AI Supervisor de Calidad <span class="title-ontime">OC</span> <span class="title-mx" title="México"><span class="title-mx-m">M</span><span class="title-mx-x">X</span></span></h1>

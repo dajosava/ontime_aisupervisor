@@ -5,7 +5,6 @@ const fs = require('fs');
 const path = require('path');
 
 const LOG_LEVELS = { debug: 10, info: 20, warn: 30, error: 40 };
-const LEVEL_NAMES = Object.keys(LOG_LEVELS);
 
 const CONFIG = {
   minLevel: LOG_LEVELS[(process.env.SUPERVISOR_LOG_LEVEL || 'info').toLowerCase()] ?? LOG_LEVELS.info,
@@ -45,7 +44,7 @@ function appendToLogFile(line) {
     const filePath = path.join(CONFIG.logDir, `supervisor-${date}.log`);
     fs.appendFileSync(filePath, line + '\n', 'utf8');
   } catch (err) {
-    console.error('[supervisor-logger] No se pudo escribir log:', err.message);
+    console.error('[logger] No se pudo escribir log:', err.message);
   }
 }
 

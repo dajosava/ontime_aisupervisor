@@ -5,7 +5,9 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci --omit=dev
 
-COPY proxy-server.js supervisor-logger.js index.html login.html auth.js app.js README.md supabase-schema.sql ./
+COPY proxy-server.js index.html login.html auth.js app.js README.md supabase-schema.sql ./
+COPY services ./services/
+COPY utils ./utils/
 COPY images ./images/
 
 ENV PORT=3001

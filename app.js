@@ -1127,11 +1127,11 @@ function renderStats() {
       <div class="stat-label">Clientes con mensajes</div>
     </div>
     <div class="stat-card">
-      <div class="stat-value" style="font-size:28px;background:linear-gradient(135deg,#4ade80,#22d3ee);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">${recent}</div>
+      <div class="stat-value stat-value-alt-green">${recent}</div>
       <div class="stat-label">Contactados hoy</div>
     </div>
     <div class="stat-card">
-      <div class="stat-value" style="font-size:28px;background:linear-gradient(135deg,#fbbf24,#f87171);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">${old}</div>
+      <div class="stat-value stat-value-alt-warm">${old}</div>
       <div class="stat-label">Sin contacto +7 días</div>
     </div>
   `;

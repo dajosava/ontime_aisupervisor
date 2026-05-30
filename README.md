@@ -57,10 +57,12 @@ flowchart TB
 
   subgraph app [Ontime AI Supervisor - Node.js :3001]
     Static[HTML / JS / login.html]
-    AuthAPI["/api/auth/*"]
-    SupAPI["/api/supervisor/*"]
-    CWProxy["/chatwoot/* proxy"]
-    Logger[supervisor-logger.js]
+    Proxy[proxy-server.js]
+    CWService[chatwoot.service]
+    SupService[supervisor.service]
+    OAIService[openai.service]
+    SBService[supabase.service]
+    Logger[utils/logger.js]
   end
 
   subgraph external [Servicios externos]
@@ -70,16 +72,19 @@ flowchart TB
   end
 
   Browser -->|HTTPS + JWT| Static
-  Browser --> AuthAPI
-  Browser --> SupAPI
-  Browser --> CWProxy
+  Browser --> Proxy
+  Proxy --> CWService
+  Proxy --> SupService
+  Proxy --> OAIService
+  Proxy --> SBService
+  Proxy --> Logger
 
-  AuthAPI -->|validar JWT| SB
-  SupAPI --> CW
-  SupAPI --> OAI
-  SupAPI --> SB
-  SupAPI --> Logger
-  CWProxy --> CW
+  CWService --> CW
+  OAIService --> OAI
+  SBService -->|validar JWT + datos| SB
+  SupService --> CWService
+  SupService --> SBService
+  SupService --> OAIService
 
   SB --> Reports[(conversation_supervision_reports)]
   SB --> Snapshots[(conversation_followup_snapshots)]
@@ -166,8 +171,14 @@ flowchart LR
 
 ```
 Ontime AI Supervisor/
-├── proxy-server.js        # Servidor HTTP: estáticos, auth, supervisor, proxy Chatwoot
-├── supervisor-logger.js   # Logs estructurados por run_id
+├── proxy-server.js        # Servidor HTTP: estáticos, auth, rutas API, proxy Chatwoot
+├── services/
+│   ├── chatwoot.service.js   # API Chatwoot (conversaciones, mensajes)
+│   ├── openai.service.js     # Análisis con OpenAI
+│   ├── supabase.service.js   # Persistencia y auth JWT
+│   └── supervisor.service.js   # Lógica de supervisión (métricas, cotización, followup)
+├── utils/
+│   └── logger.js             # Logs estructurados por run_id
 ├── auth.js                # Sesión Supabase en el navegador
 ├── app.js                 # UI: dashboard, supervisor, reportes, seguimiento
 ├── index.html             # App principal (3 pestañas)
