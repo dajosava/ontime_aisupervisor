@@ -14,6 +14,8 @@ Guía para **arrancar**, **mantener** y **migrar** este proyecto desde tu PC loc
 | Puertos publicados (por defecto) | **8080→3001** y **3001→3001** |
 | Servicio Compose | `chatwoot-dashboard` |
 | Secretos | Van en `.env` en el host; **no** se copian a la imagen (`.dockerignore` excluye `.env`) |
+| Configuración UI | Volumen `./data:/app/data` → `agent-settings.json` y backups del prompt |
+| Variables completas | `env_file: .env` en Compose (playbook v2, etiquetas excluidas, settings, etc.) |
 
 ---
 
@@ -79,7 +81,16 @@ Rellena al menos:
 
 Opcional: `HOST_PORT=8080` si quieres otro puerto público.
 
-> **Importante:** `docker-compose.yml` solo **inyecta al contenedor** las variables listadas en su bloque `environment:`. Otras del `.env.example` (p. ej. `MAX_AI_MESSAGES`, `FOLLOWUP_TIMEZONE`) usan el **valor por defecto del código** salvo que las añadas al `docker-compose.yml` o uses `env_file: .env` (ver sección [Ampliar variables en el contenedor](#ampliar-variables-en-el-contenedor)).
+Recomendado en producción:
+
+| Variable | Uso |
+|----------|-----|
+| `SUPERVISOR_PLAYBOOK_VERSION` | `v2` (defecto en `.env.example`) — lead/asesor_venta, CERRAR |
+| `SUPERVISOR_EXCLUDED_CHATWOOT_LABELS` | CSV opcional de etiquetas Chatwoot a ignorar en analyze |
+| `AUTH_REQUIRED` | `true` en producción |
+| `SUPABASE_ANON_KEY` | Login en navegador |
+
+> **Importante:** el `docker-compose.yml` del proyecto usa **`env_file: .env`** y el volumen **`./data:/app/data`**, de modo que casi todas las variables de `.env.example` llegan al contenedor y la pestaña **Configuración del agente** persiste entre reinicios. Tras cambiar `SUPERVISOR_PLAYBOOK_VERSION`, recrea el contenedor: `docker compose up -d --force-recreate`.
 
 ### 3. Supabase
 
@@ -107,6 +118,8 @@ docker compose up --build -d
 | `http://127.0.0.1:3001/` | Si prefieres el mapeo directo 3001:3001 |
 
 En la pantalla de configuración, deja **Proxy local** **vacío** si entras por la misma URL base (ej. `http://localhost:8080`). Así las peticiones van a `/chatwoot/...` en el mismo origen y evitas `ERR_CONNECTION_REFUSED`.
+
+Pestañas de la app: **Supervisor AI**, **Reportes**, **Seguimiento diario**, **Configuración del agente** (`?tab=configuracion`). La configuración guardada vive en `./data/agent-settings.json` en el host (carpeta `data/` creada al primer guardado).
 
 Comprobar salud del supervisor:
 
@@ -215,34 +228,33 @@ ports:
 
 ---
 
-## Variables de entorno
+## Variables de entorno y persistencia
 
-### Las que Compose pasa al contenedor hoy
-
-Definidas en `docker-compose.yml` (valores desde `.env` o defaults):
-
-- `PORT`, `HOST`
-- `CHATWOOT_DEFAULT_BASE_URL`, `CHATWOOT_ACCOUNT_ID`, `CHATWOOT_API_TOKEN`
-- `AI_AGENT_SENDER_NAME`, `ARCHITECT_SENDER_NAMES`
-- `OPENAI_API_KEY`, `OPENAI_MODEL`
-- `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_REPORTS_TABLE`
-
-### Ampliar variables en el contenedor
-
-Si necesitas en producción las mismas opciones que en `.env.example` (`MAX_AI_MESSAGES`, `FOLLOWUP_TIMEZONE`, `SUPABASE_SNAPSHOTS_TABLE`, etc.), añade en `docker-compose.yml` bajo el servicio:
+### Compose actual (`env_file` + volumen `data/`)
 
 ```yaml
 env_file:
   - .env
+volumes:
+  - ./data:/app/data
 ```
 
-Luego:
+- **`env_file`**: inyecta todas las variables de `.env` (OpenAI, Supabase, playbook v2, etiquetas excluidas, límites del agente, etc.).
+- **Volumen `data/`**: guarda `agent-settings.json` y `data/backups/` cuando usas la UI de configuración. Haz backup de esta carpeta en el VPS junto con `.env`.
 
-```bash
-docker compose up -d --force-recreate
-```
+El bloque `environment:` en Compose sigue definiendo valores explícitos para las claves críticas; si hay conflicto, prevalece lo declarado en `environment:` sobre `env_file`.
 
-O declara cada variable en el bloque `environment:` igual que las existentes.
+### Reinicio tras cambios
+
+| Cambio | Comando |
+|--------|---------|
+| Solo `.env` | `docker compose up -d --force-recreate` |
+| Código o Dockerfile | `docker compose up --build -d` |
+| `SUPERVISOR_PLAYBOOK_VERSION` | Recrear contenedor (el proceso cachea el playbook al arrancar) |
+
+### Ampliar variables manualmente (instalaciones antiguas)
+
+Si tu `docker-compose.yml` no tiene `env_file`, añádelo como arriba o declara cada variable en `environment:`.
 
 ---
 
@@ -250,9 +262,11 @@ O declara cada variable en el bloque `environment:` igual que las existentes.
 
 ```bash
 docker build -t ontime-ai-supervisor .
+mkdir -p data
 docker run -d --name ontime-supervisor \
   -p 8080:3001 \
   --env-file .env \
+  -v "$(pwd)/data:/app/data" \
   -e PORT=3001 \
   -e HOST=0.0.0.0 \
   ontime-ai-supervisor
@@ -507,6 +521,7 @@ docker compose up -d --force-recreate
 ### Copia de seguridad
 
 - **Imprescindible:** copia segura de `.env` (gestor de contraseñas o vault).
+- **Recomendado:** carpeta host `./data/` (`agent-settings.json` + `data/backups/` del prompt).
 - Los datos de reportes están en **Supabase**, no en el contenedor.
 - No hace falta backup del contenedor; es desechable.
 
@@ -545,6 +560,8 @@ docker image prune -f
 - [ ] Firewall: solo 22, 80, 443
 - [ ] `restart: unless-stopped` en Compose
 - [ ] UI probada: reporte Chatwoot + análisis Supervisor AI
+- [ ] Volumen `./data` presente; configuración agente guardada si aplica
+- [ ] `SUPERVISOR_PLAYBOOK_VERSION=v2` y health muestra `playbook_version: v2`
 
 ---
 
@@ -555,7 +572,10 @@ docker image prune -f
 | `ERR_CONNECTION_REFUSED` en el navegador | Proxy local apunta a `127.0.0.1:3001` pero solo está mapeado **8080** | Deja **Proxy local** vacío o usa la misma URL que la barra de direcciones |
 | Puerto 3001 en uso en el host | `npm start` y Docker a la vez | Para Node o comenta `3001:3001` en Compose |
 | `chatwoot_token_configured: false` en health | Falta `CHATWOOT_API_TOKEN` en `.env` o no se recreó el contenedor | Revisa `.env` y `docker compose up -d --force-recreate` |
-| OpenAI / Supabase no funcionan | Claves vacías o no inyectadas al contenedor | Revisa `.env` y variables en `docker-compose.yml` / `env_file` |
+| OpenAI / Supabase no funcionan | Claves vacías o no inyectadas al contenedor | Revisa `.env` y `env_file`; `docker compose exec chatwoot-dashboard env \| grep OPENAI` |
+| Sigue playbook v1 tras poner v2 | Proceso no reiniciado | `docker compose up -d --force-recreate` |
+| Se pierde configuración UI al rebuild | Sin volumen `data/` | Añade `- ./data:/app/data` en Compose |
+| Conversaciones no se analizan | Etiqueta en lista excluida | Pestaña Configuración → etiquetas excluidas o `SUPERVISOR_EXCLUDED_CHATWOOT_LABELS` |
 | Build lento o falla en `npm ci` | Red o `package-lock.json` desactualizado | En local: `npm install` y sube lock; en VPS: `docker compose build --no-cache` |
 | 502 en Nginx | Contenedor parado o proxy a puerto equivocado | `docker compose ps`, `curl http://127.0.0.1:8080/` |
 | Análisis AI cortado por timeout | Proxy con timeout bajo | Sube `proxy_read_timeout` en Nginx (ver ejemplo) |
@@ -585,7 +605,7 @@ docker compose exec chatwoot-dashboard env | sort
 | Archivo | Función |
 |---------|---------|
 | `Dockerfile` | Imagen Node 22 Alpine, `npm ci`, copia `proxy-server.js`, UI y `images/` |
-| `docker-compose.yml` | Build, puertos, variables de entorno |
+| `docker-compose.yml` | Build, puertos, `env_file`, volumen `data/`, variables explícitas |
 | `.dockerignore` | Excluye `.env`, `node_modules`, `.git`, etc. del contexto de build |
 | `.env.example` | Plantilla de configuración |
 

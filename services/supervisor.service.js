@@ -12,17 +12,19 @@ const {
   fetchReportsForFollowup,
   fetchSnapshotsByDate
 } = require('./supabase.service');
+const { OPENAI_MODEL } = require('./openai.service');
 const {
-  OPENAI_MODEL,
-  AI_AGENT_SENDER_NAME,
-  ARCHITECT_SENDER_NAMES,
+  getAiAgentSenderName,
+  getArchitectSenderNames,
+  getInactiveDaysThreshold,
+  getChatwootActivityWindowHours,
+  getFollowupStages,
   QUOTE_URL_REGIONS,
   ALL_QUOTE_DOMAINS
-} = require('./openai.service');
+} = require('../supervisor/constants');
 
 const MAX_AI_MESSAGES = parseInt(process.env.MAX_AI_MESSAGES || '0', 10);
 const MAX_TRANSCRIPT_CHARS = parseInt(process.env.MAX_TRANSCRIPT_CHARS || '100000', 10);
-const INACTIVE_DAYS_THRESHOLD = Math.max(1, parseInt(process.env.INACTIVE_DAYS_THRESHOLD || '2', 10));
 const INACTIVITY_TAG = 'inactiva_interes_real';
 const LEGACY_INACTIVITY_TAGS = ['inactiva_25d_interes_real', INACTIVITY_TAG];
 const CUSTOMER_INTEREST_KEYWORDS =
@@ -38,11 +40,6 @@ const INBOX_ID_TO_QUOTE_REGION = {
 const SUPABASE_REPORTS_TABLE = process.env.SUPABASE_REPORTS_TABLE || 'conversation_supervision_reports';
 const SUPABASE_SNAPSHOTS_TABLE = process.env.SUPABASE_SNAPSHOTS_TABLE || 'conversation_followup_snapshots';
 const FOLLOWUP_TIMEZONE = process.env.FOLLOWUP_TIMEZONE || 'America/Hermosillo';
-const FOLLOWUP_STAGES = (process.env.FOLLOWUP_STAGES || 'asesor_ventas,cotizacion_pendiente')
-  .split(',')
-  .map(stage => stage.trim())
-  .filter(Boolean);
-
 function senderName(message) {
   const sender = message?.sender || {};
   return String(sender.available_name || sender.name || sender.email || '').trim();
@@ -61,12 +58,14 @@ function normalizedName(value) {
 }
 
 function isAiAgentSender(name) {
-  return normalizedName(name) === normalizedName(AI_AGENT_SENDER_NAME);
+  return normalizedName(name) === normalizedName(getAiAgentSenderName());
 }
 
 function isArchitectSender(name) {
   const normalized = normalizedName(name);
-  return ARCHITECT_SENDER_NAMES.some(architectName => normalizedName(architectName) === normalized);
+  return getArchitectSenderNames().some(
+    architectName => normalizedName(architectName) === normalized
+  );
 }
 
 function participantType(message) {
@@ -243,8 +242,8 @@ function computeMetrics(messages) {
     last_inbound_at: lastInbound?.created_at ? new Date(lastInbound.created_at * 1000).toISOString() : null,
     last_outbound_sender: lastOutbound ? senderName(lastOutbound) : '',
     last_outbound_sender_group: lastOutbound ? participantType(lastOutbound) : null,
-    ai_agent_sender_name: AI_AGENT_SENDER_NAME,
-    architect_sender_names: ARCHITECT_SENDER_NAMES
+    ai_agent_sender_name: getAiAgentSenderName(),
+    architect_sender_names: getArchitectSenderNames()
   };
 }
 
@@ -341,13 +340,13 @@ function buildInactivityTagging(messages, metrics, quoteDetection, storedHistori
   const interest = detectRealCustomerInterest(messages, metrics, quoteDetection, storedHistorical);
   const inactiveThresholdMet =
     Number.isFinite(inactivity.days_since_last_interaction) &&
-    inactivity.days_since_last_interaction >= INACTIVE_DAYS_THRESHOLD;
+    inactivity.days_since_last_interaction >= getInactiveDaysThreshold();
   const tagged = inactiveThresholdMet && interest.real_customer_interest;
 
   return {
     ...inactivity,
     ...interest,
-    inactive_threshold_days: INACTIVE_DAYS_THRESHOLD,
+    inactive_threshold_days: getInactiveDaysThreshold(),
     inactive_threshold_met: inactiveThresholdMet,
     supervisor_tags: tagged ? [INACTIVITY_TAG] : [],
     tagged_inactive_with_interest: tagged
@@ -374,7 +373,10 @@ function mergeInactivityTagging(analysis, tagging) {
   next.requires_human_review = true;
   next.missed_followups = true;
 
-  if (['indefinida', 'bot_lead_inicial', 'asesor_ventas'].includes(next.stage)) {
+  if (
+    ['indefinida', 'bot_lead_inicial', 'lead', 'asesor_ventas', 'asesor_venta'].includes(next.stage) &&
+    next.evaluation_scope !== 'fuera_de_alcance'
+  ) {
     next.stage = 'oportunidad_inactiva';
   }
 
@@ -529,12 +531,13 @@ function mergeQuoteDetectionIntoAnalysis(analysis, quoteDetection) {
   spa.cotizacion_region = quoteDetection.cotizacion_region;
   spa.cotizacion_sent_at = quoteDetection.cotizacion_sent_at;
   spa.cotizacion_evidence = quoteDetection.cotizacion_evidence || spa.cotizacion_evidence;
-  if (!spa.funnel_stage || spa.funnel_stage === 'asesor_ventas' || spa.funnel_stage === 'indefinida') {
+  if (!spa.funnel_stage || ['asesor_ventas', 'asesor_venta', 'lead', 'indefinida'].includes(spa.funnel_stage)) {
     spa.funnel_stage = 'cotizacion_enviada';
   }
 
-  if (['bot_lead_inicial', 'asesor_ventas', 'indefinida'].includes(next.stage)) {
-    next.stage = 'cotizacion_pendiente';
+  if (next.evaluation_scope !== 'fuera_de_alcance' && next.evaluation_stage !== 'fuera_de_alcance') {
+    next.evaluation_stage = 'asesor_venta';
+    next.stage = 'asesor_venta';
   }
 
   if (!quoteDetection.matches_branch_expected && quoteDetection.expected_region) {
@@ -595,8 +598,17 @@ function buildStoredHistoricalContext(previousReport) {
   };
 }
 
-function mergeMetricsForAnalysis(storedMetrics, recentMessages, windowHours) {
+function mergeMetricsForAnalysis(storedMetrics, recentMessages, windowHours, options = {}) {
   const recent = computeMetrics(recentMessages);
+  if (options.fullHistory) {
+    return {
+      ...recent,
+      fetch_mode: 'historial_completo_chatwoot',
+      chatwoot_activity_window_hours: null,
+      messages_fetched_from_chatwoot: recentMessages.length,
+      full_history_analysis: true
+    };
+  }
   if (!storedMetrics || !Object.keys(storedMetrics).length) {
     return {
       ...recent,
@@ -682,7 +694,8 @@ function buildAnalysisEnrichment({
   quoteDetection,
   inactivityTagging,
   storedHistorical,
-  activityWindowHours
+  activityWindowHours,
+  fullHistory = false
 }) {
   const snapshotDate = calendarDateInTimezone();
   const yesterdayDate = addCalendarDays(snapshotDate, -1);
@@ -691,11 +704,13 @@ function buildAnalysisEnrichment({
   const yesterdaySnap = history.find(snap => snap.snapshot_date === yesterdayDate) || null;
   const previousAnalyzedAt = previousReport?.analyzed_at || null;
   const previousMetrics = previousReport?.metrics || {};
-  const windowHours = activityWindowHours || CHATWOOT_ACTIVITY_WINDOW_HOURS;
+  const windowHours = activityWindowHours || getChatwootActivityWindowHours();
 
-  const transcriptRecent = buildTranscript(recentMessages, {
-    label: `ultimas_${windowHours}h_chatwoot`
-  });
+  const transcriptRecent = fullHistory
+    ? buildTranscript(recentMessages, { label: 'historial_completo_chatwoot' })
+    : buildTranscript(recentMessages, {
+      label: `ultimas_${windowHours}h_chatwoot`
+    });
   const transcriptSinceLastAnalysis = previousAnalyzedAt
     ? buildTranscript(recentMessages, {
       sinceIso: previousAnalyzedAt,
@@ -720,23 +735,30 @@ function buildAnalysisEnrichment({
     yesterdaySnap
   });
 
-  const hasDbHistory = Boolean(storedHistorical);
-  const analysisMode = hasDbHistory
-    ? 'incremental_bd_mas_chatwoot_reciente'
-    : transcriptRecent.message_count
-      ? 'analisis_inicial_solo_ventana_reciente'
-      : 'analisis_inicial';
+  const hasDbHistory = Boolean(storedHistorical) && !fullHistory;
+  const analysisMode = fullHistory
+    ? 'historial_completo_cliente'
+    : hasDbHistory
+      ? 'incremental_bd_mas_chatwoot_reciente'
+      : transcriptRecent.message_count
+        ? 'analisis_inicial_solo_ventana_reciente'
+        : 'analisis_inicial';
+
+  const chatwootFetchStrategy = fullHistory
+    ? 'historial_completo_chatwoot'
+    : hasDbHistory
+      ? 'mensajes_recientes_chatwoot_mas_contexto_supabase'
+      : 'solo_mensajes_recientes_chatwoot';
 
   return {
     analysis_mode: analysisMode,
     timezone: FOLLOWUP_TIMEZONE,
     snapshot_date: snapshotDate,
     chatwoot_fetch: {
-      activity_window_hours: windowHours,
+      activity_window_hours: fullHistory ? null : windowHours,
       messages_fetched: recentMessages.length,
-      strategy: hasDbHistory
-        ? 'mensajes_recientes_chatwoot_mas_contexto_supabase'
-        : 'solo_mensajes_recientes_chatwoot'
+      strategy: chatwootFetchStrategy,
+      full_history: fullHistory
     },
     stored_historical: storedHistorical,
     previous_report: previousReport
@@ -764,6 +786,7 @@ function buildAnalysisEnrichment({
     conversation_history: {
       messages_fetched_from_chatwoot_recent: recentMessages.length,
       has_stored_history_in_supabase: hasDbHistory,
+      full_history_analysis: fullHistory,
       transcript_historico_bd: transcriptFromDb
         ? { chars: transcriptFromDb.transcript.length }
         : null,
@@ -772,25 +795,41 @@ function buildAnalysisEnrichment({
         truncated: transcriptRecent.truncated
       }
     },
-    transcripts: {
-      historico_resumido_bd: transcriptFromDb,
-      ultimas_horas_chatwoot: transcriptRecent,
-      nuevo_desde_ultimo_analisis: transcriptSinceLastAnalysis
-    },
+    transcripts: fullHistory
+      ? {
+        historial_completo_chatwoot: transcriptRecent,
+        nuevo_desde_ultimo_analisis: transcriptSinceLastAnalysis
+      }
+      : {
+        historico_resumido_bd: transcriptFromDb,
+        ultimas_horas_chatwoot: transcriptRecent,
+        nuevo_desde_ultimo_analisis: transcriptSinceLastAnalysis
+      },
     quote_detection: quoteDetection || { cotizacion_enviada: false },
     inactivity_tagging: inactivityTagging || null,
-    analysis_instructions: [
-      `Solo se trajeron de Chatwoot los mensajes de las últimas ${windowHours} horas.`,
-      hasDbHistory
-        ? 'El contexto histórico largo está en stored_historical y transcripts.historico_resumido_bd (análisis previo en Supabase). No asumas que falta historial si hay datos en BD.'
-        : 'No hay reporte previo en Supabase: evalúa con el transcript de la ventana reciente.',
-      'Prioriza transcripts.ultimas_horas_chatwoot y transcripts.nuevo_desde_ultimo_analisis para cambios recientes.',
-      'Cruza activity_delta y snapshot_timeline para seguimiento día a día.',
-      'En sales_process_analysis documenta cotización, espera del cliente y seguimiento comercial.',
-      quoteDetection?.cotizacion_enviada
-        ? `COTIZACIÓN CONFIRMADA por URL (${quoteDetection.cotizacion_domain}): evalúa seguimiento post-envío y si el cliente ya respondió.`
-        : 'No se detectó URL oficial de cotización en mensajes recientes; usa historial BD si indica cotización previa.'
-    ]
+    analysis_instructions: fullHistory
+      ? [
+        'Playbook v2: NO resumir la conversación; evaluar desempeño comercial (lead o asesor_venta).',
+        'Si el tema es posventa, garantía, instalación, diseño post-compra, cobranza o reparaciones → evaluation_scope=fuera_de_alcance.',
+        'Historial COMPLETO de la conversación en transcripts.historial_completo_chatwoot.',
+        'Evalúa todo el embudo visible en el chat con el cliente, no solo mensajes recientes.',
+        'Aplica modelo CERRAR y castigos del playbook; marca venta_pasiva_detectada si aplica.',
+        quoteDetection?.cotizacion_enviada
+          ? `COTIZACIÓN CONFIRMADA (${quoteDetection.cotizacion_domain}): evaluation_stage=asesor_venta salvo fuera_de_alcance por posventa/garantía.`
+          : 'Sin URL oficial de cotización en el historial; si solo información inicial → lead.'
+      ]
+      : [
+        'Playbook v2: NO resumir la conversación; evaluar desempeño comercial (lead o asesor_venta).',
+        'Si el tema es posventa, garantía, instalación, diseño post-compra, cobranza o reparaciones → evaluation_scope=fuera_de_alcance.',
+        `Solo mensajes Chatwoot de las últimas ${windowHours} horas en transcripts.ultimas_horas_chatwoot.`,
+        hasDbHistory
+          ? 'Historial largo en stored_historical / historico_resumido_bd; no asumir falta de contexto.'
+          : 'Sin reporte previo en Supabase: evalúa con ventana reciente.',
+        'Aplica modelo CERRAR y castigos del playbook; marca venta_pasiva_detectada si aplica.',
+        quoteDetection?.cotizacion_enviada
+          ? `COTIZACIÓN CONFIRMADA (${quoteDetection.cotizacion_domain}): evaluation_stage=asesor_venta salvo fuera_de_alcance por posventa/garantía.`
+          : 'Sin URL oficial de cotización en ventana reciente; si solo información inicial → lead.'
+      ]
   };
 }
 
@@ -808,13 +847,13 @@ function rowForReport({ conversation, contact, messages, metrics, analysis, base
   ]);
   const computedAiAgentNames = uniqueNonEmpty([
     ...(metrics.ai_agent_names || []),
-    computedAiAgentPresent ? AI_AGENT_SENDER_NAME : ''
+    computedAiAgentPresent ? getAiAgentSenderName() : ''
   ]);
   const aiAgentPresent = computedAiAgentPresent || Boolean(aiAgentAnalysis.present);
   const architectPresent = computedArchitectPresent || Boolean(architectAnalysis.present);
   const aiAgentSummary = aiAgentAnalysis.summary ||
     (aiAgentPresent
-      ? `Intervención detectada del AI Agent (${computedAiAgentNames.join(', ') || AI_AGENT_SENDER_NAME}) con ${metrics.ai_agent_outbound_count || 0} mensajes salientes.`
+      ? `Intervención detectada del AI Agent (${computedAiAgentNames.join(', ') || getAiAgentSenderName()}) con ${metrics.ai_agent_outbound_count || 0} mensajes salientes.`
       : 'Sin intervención detectada del AI Agent.');
   const architectSummary = architectAnalysis.summary ||
     (architectPresent
@@ -841,7 +880,7 @@ function rowForReport({ conversation, contact, messages, metrics, analysis, base
     contact_phone: contact.phone_number || '',
     contact_email: contact.email || '',
     assignee_name: assigneeName || metrics.last_outbound_sender || '',
-    stage: analysis.stage || 'indefinida',
+    stage: analysis.evaluation_stage || analysis.stage || 'indefinida',
     risk_level: analysis.risk_level || 'medio',
     score_general: Number.isFinite(Number(analysis.score_general)) ? Number(analysis.score_general) : null,
     customer_sentiment: analysis.customer_sentiment || '',
@@ -1104,12 +1143,28 @@ function summarizeFollowupItems(items) {
   return summary;
 }
 
+const STAGE_QUERY_ALIASES = {
+  lead: ['lead', 'bot_lead_inicial'],
+  asesor_venta: ['asesor_venta', 'asesor_ventas', 'cotizacion_pendiente']
+};
+
+function expandStagesForQuery(stages) {
+  const out = new Set();
+  for (const stage of stages) {
+    const aliases = STAGE_QUERY_ALIASES[stage] || [stage];
+    for (const alias of aliases) out.add(alias);
+  }
+  return [...out];
+}
+
 function parseStagesParam(value) {
-  if (!value) return [...FOLLOWUP_STAGES];
-  return value
-    .split(',')
-    .map(stage => stage.trim())
-    .filter(Boolean);
+  const raw = value
+    ? value
+        .split(',')
+        .map(stage => stage.trim())
+        .filter(Boolean)
+    : [...getFollowupStages()];
+  return expandStagesForQuery(raw);
 }
 
 async function syncFollowupSnapshots({ baseUrl, accountId, token, inboxId, branchName, stages, limit }) {
@@ -1152,35 +1207,49 @@ async function syncFollowupSnapshots({ baseUrl, accountId, token, inboxId, branc
 
 
 function getSupervisorConfig() {
+  const { loadSettings } = require('../supervisor/settings.service');
+  const s = loadSettings();
   return {
     OPENAI_MODEL,
     SUPABASE_REPORTS_TABLE: process.env.SUPABASE_REPORTS_TABLE || 'conversation_supervision_reports',
     SUPABASE_SNAPSHOTS_TABLE: process.env.SUPABASE_SNAPSHOTS_TABLE || 'conversation_followup_snapshots',
     FOLLOWUP_TIMEZONE,
-    FOLLOWUP_STAGES,
+    FOLLOWUP_STAGES: s.followup_stages,
     QUOTE_URL_REGIONS,
     MAX_AI_MESSAGES,
     MAX_TRANSCRIPT_CHARS,
     MAX_CONVERSATION_MESSAGES: parseInt(process.env.MAX_CONVERSATION_MESSAGES || '3000', 10),
     CHATWOOT_MESSAGES_PAGE_SIZE: parseInt(process.env.CHATWOOT_MESSAGES_PAGE_SIZE || '20', 10),
-    AI_AGENT_SENDER_NAME,
-    ARCHITECT_SENDER_NAMES,
-    INACTIVE_DAYS_THRESHOLD,
+    AI_AGENT_SENDER_NAME: s.ai_agent_sender_name,
+    ARCHITECT_SENDER_NAMES: s.architect_sender_names,
+    INACTIVE_DAYS_THRESHOLD: s.inactive_days_threshold,
     INACTIVITY_TAG,
     LEGACY_INACTIVITY_TAGS,
     SUPERVISOR_MAX_CONVERSATIONS: parseInt(process.env.SUPERVISOR_MAX_CONVERSATIONS || '0', 10),
     SUPERVISOR_MAX_CONVERSATION_PAGES: Math.max(1, parseInt(process.env.SUPERVISOR_MAX_CONVERSATION_PAGES || '200', 10)),
-    CHATWOOT_ACTIVITY_WINDOW_HOURS
+    CHATWOOT_ACTIVITY_WINDOW_HOURS: s.chatwoot_activity_window_hours,
+    OPENAI_TEMPERATURE: s.openai_temperature,
+    AGENT_MAX_ROUNDS: s.agent_max_rounds,
+    AGENT_MAX_TOOLS_PER_ROUND: s.agent_max_tools_per_round,
+    PLAYBOOK_VERSION: s.playbook_version
   };
+}
+
+function getInactiveDaysThresholdExport() {
+  return getInactiveDaysThreshold();
+}
+
+function getFollowupStagesExport() {
+  return getFollowupStages();
 }
 
 module.exports = {
   getSupervisorConfig,
   INACTIVITY_TAG,
   LEGACY_INACTIVITY_TAGS,
-  FOLLOWUP_STAGES,
+  getFollowupStages: getFollowupStagesExport,
   FOLLOWUP_TIMEZONE,
-  INACTIVE_DAYS_THRESHOLD,
+  getInactiveDaysThreshold: getInactiveDaysThresholdExport,
   senderName,
   uniqueNonEmpty,
   buildStoredHistoricalContext,

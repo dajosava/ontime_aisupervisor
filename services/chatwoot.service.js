@@ -325,6 +325,52 @@ async function fetchRecentConversationMessages({
   return all.sort((a, b) => Number(a.created_at || 0) - Number(b.created_at || 0));
 }
 
+async function fetchConversationById({
+  baseUrl,
+  accountId,
+  conversationId,
+  token,
+  logger,
+  logLabel
+}) {
+  const data = await chatwootApiFetch({
+    baseUrl,
+    accountId,
+    token,
+    path: `/conversations/${conversationId}`,
+    logger,
+    logLabel: logLabel || `conversation_${conversationId}`
+  });
+  return data?.payload || data?.data?.payload || data;
+}
+
+async function fetchMessagesForAnalysis({
+  fullHistory = false,
+  baseUrl,
+  accountId,
+  conversationId,
+  token,
+  sinceUnix,
+  logger
+}) {
+  if (fullHistory) {
+    return fetchAllConversationMessages({
+      baseUrl,
+      accountId,
+      conversationId,
+      token
+    });
+  }
+  return fetchRecentConversationMessages({
+    baseUrl,
+    accountId,
+    conversationId,
+    token,
+    sinceUnix,
+    logger
+  });
+}
+
 function conversationAppUrl(baseUrl, accountId, inboxId, conversationId) {
   return `${cleanBaseUrl(baseUrl)}/app/accounts/${accountId}/inbox/${inboxId}/conversations/${conversationId}`;
 }
@@ -346,5 +392,7 @@ module.exports = {
   fetchConversationsWithRecentActivity,
   fetchConversationMessages,
   fetchRecentConversationMessages,
+  fetchConversationById,
+  fetchMessagesForAnalysis,
   conversationAppUrl
 };

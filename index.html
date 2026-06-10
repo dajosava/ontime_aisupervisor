@@ -362,6 +362,34 @@
     color: rgba(255, 255, 255, 0.88);
   }
 
+  .supervisor-alerts {
+    margin-top: 10px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: rgba(251, 191, 36, 0.08);
+    border-left: 3px solid var(--warning);
+    line-height: 1.45;
+  }
+
+  .supervisor-alerts-label {
+    color: var(--warning);
+    font-weight: 700;
+    margin-right: 6px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .supervisor-alerts-icon {
+    font-size: 1.05em;
+    line-height: 1;
+    filter: drop-shadow(0 0 6px rgba(251, 191, 36, 0.45));
+  }
+
+  .supervisor-alerts-text {
+    color: rgba(255, 255, 255, 0.9);
+  }
+
   .supervisor-card-section {
     border-left: 2px solid rgba(34, 197, 94, 0.45);
     margin-top: 10px;
@@ -397,6 +425,263 @@
     font-size: 11px;
     color: rgba(255, 255, 255, 0.55);
     margin-bottom: 18px;
+  }
+
+  .agent-config-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 14px 18px;
+    margin-bottom: 18px;
+  }
+
+  .agent-config-section {
+    margin-bottom: 22px;
+    padding-bottom: 18px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .agent-config-section:last-of-type { border-bottom: none; }
+
+  .agent-config-section h3 {
+    font-size: 14px;
+    font-weight: 700;
+    margin: 0 0 10px;
+    color: rgba(255, 255, 255, 0.92);
+  }
+
+  .agent-config-hint {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.5);
+    margin: -6px 0 12px;
+    line-height: 1.45;
+  }
+
+  .agent-config-textarea {
+    width: 100%;
+    min-height: 140px;
+    resize: vertical;
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.45;
+    padding: 12px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: rgba(0, 0, 0, 0.25);
+    color: #fff;
+  }
+
+  .agent-config-textarea.cfg-sm { min-height: 72px; }
+
+  .agent-config-textarea.cfg-prompt-lg {
+    min-height: 320px;
+    font-size: 12px;
+  }
+
+  .cfg-prompt-mode-badge {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    margin-left: 8px;
+    vertical-align: middle;
+  }
+
+  .cfg-prompt-mode-badge.custom {
+    background: rgba(234, 179, 8, 0.15);
+    border-color: rgba(234, 179, 8, 0.45);
+    color: #fde047;
+  }
+
+  .cfg-prompt-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    margin: 10px 0 12px;
+  }
+
+  .cfg-backup-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .cfg-backup-row select {
+    flex: 1;
+    min-width: 260px;
+    max-width: 520px;
+  }
+
+  .cfg-current-summary {
+    background: rgba(34, 197, 94, 0.08);
+    border: 1px solid rgba(34, 197, 94, 0.35);
+    border-radius: 12px;
+    padding: 16px 18px;
+    margin-bottom: 22px;
+  }
+
+  .cfg-current-title {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 12px;
+  }
+
+  .cfg-current-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 10px 20px;
+  }
+
+  .cfg-current-item label {
+    display: block;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.45);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 3px;
+  }
+
+  .cfg-current-item span,
+  .cfg-current-item .cfg-current-value {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.92);
+    line-height: 1.4;
+  }
+
+  .cfg-current-item.cfg-wide { grid-column: 1 / -1; }
+
+  .architect-picker-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+
+  .architect-picker-row select {
+    flex: 1;
+    min-width: 220px;
+    max-width: 420px;
+  }
+
+  .architect-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    min-height: 36px;
+    margin-bottom: 10px;
+  }
+
+  .architect-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: rgba(34, 197, 94, 0.15);
+    border: 1px solid rgba(34, 197, 94, 0.4);
+    font-size: 12px;
+    color: #fff;
+  }
+
+  .architect-chip button {
+    border: none;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.65);
+    cursor: pointer;
+    padding: 0 2px;
+    font-size: 14px;
+    line-height: 1;
+  }
+
+  .architect-chip button:hover { color: #fff; }
+
+  .excluded-label-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: rgba(249, 115, 22, 0.18);
+    border: 1px solid rgba(251, 146, 60, 0.45);
+    font-size: 12px;
+    color: #fdba74;
+    font-family: var(--mono);
+  }
+
+  .excluded-label-chip button {
+    border: none;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.65);
+    cursor: pointer;
+    padding: 0 2px;
+    font-size: 14px;
+    line-height: 1;
+  }
+
+  .excluded-label-chip button:hover { color: #fff; }
+
+  .architect-chips-empty {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.4);
+    padding: 8px 0;
+  }
+
+  .architect-new-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    margin-top: 10px;
+  }
+
+  .architect-new-row input { flex: 1; min-width: 180px; max-width: 320px; }
+
+  .agent-config-meta {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.45);
+    margin-top: 8px;
+  }
+
+  .agent-config-preview {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.6);
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+    padding: 10px 12px;
+    max-height: 120px;
+    overflow: auto;
+    white-space: pre-wrap;
+    margin-top: 8px;
+  }
+
+  .agent-config-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    margin-top: 16px;
+  }
+
+  #cfg-status {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--accent);
   }
 
   .reports-filters {
@@ -473,6 +758,21 @@
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
     gap: 12px;
+  }
+
+  .report-card-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+  }
+
+  .btn-report-reanalyze:disabled {
+    opacity: 0.65;
+    cursor: wait;
   }
 
   .reports-empty {
@@ -880,6 +1180,14 @@
     background: rgba(167, 139, 250, 0.16);
     color: #c4b5fd;
     margin-right: 6px;
+  }
+
+  .badge-stage-fuera {
+    background: rgba(249, 115, 22, 0.22);
+    color: #fdba74;
+    border: 1px solid rgba(251, 146, 60, 0.5);
+    white-space: nowrap;
+    flex-shrink: 0;
   }
 
   .supervisor-card-badges {
@@ -1326,6 +1634,7 @@
     <button type="button" class="app-tab active" id="tab-btn-supervisor" role="tab" aria-selected="true" aria-controls="tab-supervisor" onclick="switchAppTab('supervisor')">Supervisor AI</button>
     <button type="button" class="app-tab" id="tab-btn-reportes" role="tab" aria-selected="false" aria-controls="tab-reportes" onclick="switchAppTab('reportes')">Reportes</button>
     <button type="button" class="app-tab" id="tab-btn-seguimiento" role="tab" aria-selected="false" aria-controls="tab-seguimiento" onclick="switchAppTab('seguimiento')">Seguimiento diario</button>
+    <button type="button" class="app-tab" id="tab-btn-configuracion" role="tab" aria-selected="false" aria-controls="tab-configuracion" onclick="switchAppTab('configuracion')">Configuración del agente</button>
   </nav>
 
   <div id="tab-supervisor" class="tab-panel active" role="tabpanel" aria-labelledby="tab-btn-supervisor">
@@ -1417,7 +1726,7 @@
     <section class="reports-panel">
       <div class="reports-panel-title">Seguimiento diario</div>
       <div class="reports-panel-sub">
-        Compara snapshots guardados (hoy vs ayer) con datos de Chatwoot · etapas: asesor de ventas y cotización pendiente
+        Compara snapshots guardados (hoy vs ayer) con datos de Chatwoot · etapas: lead y asesor_venta
       </div>
       <div class="reports-filters">
         <div class="field">
@@ -1433,9 +1742,10 @@
         <div class="field">
           <label for="followup-stages">Etapas</label>
           <select id="followup-stages">
-            <option value="asesor_ventas,cotizacion_pendiente" selected>Asesor ventas + Cotización pendiente</option>
-            <option value="asesor_ventas">Solo asesor_ventas</option>
-            <option value="cotizacion_pendiente">Solo cotización pendiente</option>
+            <option value="lead,asesor_venta" selected>Lead + Asesor venta</option>
+            <option value="lead">Solo lead</option>
+            <option value="asesor_venta">Solo asesor_venta</option>
+            <option value="asesor_ventas,cotizacion_pendiente">Legacy (asesor_ventas + cotización)</option>
           </select>
         </div>
         <div class="field">
@@ -1451,6 +1761,142 @@
       </div>
       <div class="reports-summary-row" id="followup-summary"></div>
       <div id="followup-content"></div>
+    </section>
+  </div>
+
+  <div id="tab-configuracion" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-configuracion" hidden>
+    <section class="reports-panel agent-config-panel">
+      <div class="reports-panel-title">Configuración del agente</div>
+      <div class="reports-panel-sub">
+        Ajusta el system prompt, arquitectos humanos y parámetros del LLM. Los cambios se guardan en el servidor y aplican al siguiente análisis.
+      </div>
+
+      <div id="cfg-current-summary" class="cfg-current-summary" aria-live="polite">
+        <div class="cfg-current-title">Configuración actual</div>
+        <div class="cfg-current-grid" id="cfg-current-grid">
+          <p class="agent-config-hint" style="margin:0">Cargando…</p>
+        </div>
+      </div>
+
+      <div class="agent-config-section">
+        <h3>System prompt <span id="cfg-prompt-mode-badge" class="cfg-prompt-mode-badge">—</span></h3>
+        <p class="agent-config-hint">
+          Texto que usa el LLM hoy. Puedes editarlo aquí. Al guardar se crea un backup automático de la configuración anterior para poder deshacer.
+        </p>
+        <label class="field">
+          <span>System prompt actual (editable)</span>
+          <textarea id="cfg-effective-prompt" class="agent-config-textarea cfg-prompt-lg" placeholder="Cargando system prompt…"></textarea>
+        </label>
+        <div class="cfg-prompt-actions">
+          <label class="field" style="display:flex;align-items:center;gap:8px;margin:0">
+            <input type="checkbox" id="cfg-use-custom-prompt" onchange="toggleCustomPromptFields()">
+            <span>Guardar como prompt personalizado (reemplaza playbook)</span>
+          </label>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="loadPlaybookIntoPromptEditor()">Cargar playbook integrado en editor</button>
+        </div>
+        <label class="field">
+          <span>Instrucciones adicionales (se añaden al final del prompt)</span>
+          <textarea id="cfg-system-prompt-extra" class="agent-config-textarea cfg-sm" placeholder="Reglas extra para el cliente, tono, políticas..." oninput="onPromptExtraInput()"></textarea>
+        </label>
+        <label class="field" style="margin-top:12px">
+          <span>Extra en flujo de herramientas (opcional)</span>
+          <textarea id="cfg-workflow-extra" class="agent-config-textarea cfg-sm" placeholder="Pasos o reglas extra para el bucle de tools..."></textarea>
+        </label>
+        <div class="cfg-backup-row">
+          <label class="field" style="margin:0;flex:1;min-width:260px">
+            <span>Restaurar backup</span>
+            <select id="cfg-backup-select" class="sort-select">
+              <option value="">— Elegir backup —</option>
+            </select>
+          </label>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="restoreAgentSettingsBackup()">Restaurar seleccionado</button>
+        </div>
+        <p id="cfg-backup-hint" class="agent-config-hint" style="margin-top:8px"></p>
+      </div>
+
+      <div class="agent-config-section">
+        <h3>Participantes en Chatwoot</h3>
+        <div class="agent-config-grid">
+          <div class="field">
+            <label for="cfg-ai-agent-name">Nombre del AI Agent</label>
+            <input type="text" id="cfg-ai-agent-name" placeholder="Super Admin">
+          </div>
+          <div class="field">
+            <label for="cfg-playbook-version">Versión playbook</label>
+            <input type="text" id="cfg-playbook-version" placeholder="v2">
+          </div>
+        </div>
+        <p class="agent-config-hint">Elige arquitectos del catálogo (nombres exactos en Chatwoot). Los activos se usan en el análisis del LLM.</p>
+        <div class="field">
+          <label for="cfg-architect-add">Añadir arquitecto</label>
+          <div class="architect-picker-row">
+            <select id="cfg-architect-add" class="sort-select" onchange="addArchitectFromDropdown()">
+              <option value="">— Elegir arquitecto —</option>
+            </select>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="addArchitectFromDropdown()">Agregar</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>Arquitectos activos</label>
+          <div id="cfg-architect-chips" class="architect-chips"></div>
+        </div>
+        <div class="architect-new-row">
+          <input type="text" id="cfg-architect-new" class="search-input" placeholder="Nuevo nombre (como en Chatwoot)">
+          <button type="button" class="btn btn-secondary btn-sm" onclick="addArchitectToCatalog()">Añadir al catálogo</button>
+        </div>
+      </div>
+
+      <div class="agent-config-section">
+        <h3>Etiquetas Chatwoot excluidas</h3>
+        <p class="agent-config-hint">
+          Si una conversación tiene <strong>al menos una</strong> de estas etiquetas en Chatwoot, el supervisor <strong>no la analiza</strong>. Guarda los cambios para aplicar en el próximo análisis.
+        </p>
+        <div class="field">
+          <label>Lista de exclusión (<span id="cfg-excluded-label-count">0</span>)</label>
+          <div id="cfg-excluded-label-chips" class="architect-chips"></div>
+        </div>
+        <div class="architect-new-row">
+          <input type="text" id="cfg-excluded-label-new" class="search-input" placeholder="Nueva etiqueta (ej. contrato)">
+          <button type="button" class="btn btn-secondary btn-sm" onclick="addExcludedChatwootLabel()">Añadir etiqueta</button>
+        </div>
+      </div>
+
+      <div class="agent-config-section">
+        <h3>Comportamiento y LLM</h3>
+        <div class="agent-config-grid">
+          <div class="field">
+            <label for="cfg-window-hours">Ventana actividad Chatwoot (h)</label>
+            <input type="number" id="cfg-window-hours" min="1" max="168" value="24">
+          </div>
+          <div class="field">
+            <label for="cfg-inactive-days">Días etiqueta inactiva</label>
+            <input type="number" id="cfg-inactive-days" min="1" max="90" value="2">
+          </div>
+          <div class="field">
+            <label for="cfg-temperature">Temperatura OpenAI</label>
+            <input type="number" id="cfg-temperature" min="0" max="1" step="0.05" value="0.1">
+          </div>
+          <div class="field">
+            <label for="cfg-max-rounds">Rondas máx. agente</label>
+            <input type="number" id="cfg-max-rounds" min="3" max="25" value="10">
+          </div>
+          <div class="field">
+            <label for="cfg-max-tools">Tools por ronda</label>
+            <input type="number" id="cfg-max-tools" min="1" max="10" value="5">
+          </div>
+          <div class="field" style="grid-column:1/-1">
+            <label for="cfg-followup-stages">Etapas seguimiento diario (coma)</label>
+            <input type="text" id="cfg-followup-stages" placeholder="lead, asesor_venta">
+          </div>
+        </div>
+      </div>
+
+      <div class="agent-config-actions">
+        <button type="button" class="btn btn-primary" onclick="saveAgentSettings()">Guardar configuración</button>
+        <button type="button" class="btn btn-secondary" onclick="resetAgentSettings()">Restaurar valores por defecto</button>
+        <span id="cfg-status"></span>
+      </div>
+      <div id="cfg-meta" class="agent-config-meta"></div>
     </section>
   </div>
 

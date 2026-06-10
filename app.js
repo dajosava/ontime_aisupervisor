@@ -13,6 +13,7 @@ const BRANCH_NAME_BY_ID = {
 const RISK_ORDER = ['grave', 'alto', 'medio', 'bajo'];
 let reportsTabRaw = [];
 let followupItemsRaw = [];
+const reportReanalyzeInFlight = new Set();
 
 const FOLLOWUP_STATUS_ORDER = [
   'sin_sincronizar',
@@ -332,10 +333,15 @@ async function runSupervisorAnalysis() {
       data.tagged_inactive_interest != null
         ? ` · Etiquetadas +${data.inactive_days_threshold || 2}d inactivas con interés: ${data.tagged_inactive_interest}`
         : '';
+    const skippedLabels =
+      data.skipped_excluded_labels != null && data.skipped_excluded_labels > 0
+        ? ` · Ignoradas por etiqueta Chatwoot: ${data.skipped_excluded_labels}`
+        : '';
+    const eligible = data.eligible_after_label_filter ?? data.fetched;
     renderSupervisorDebugLog(data.debug, data.run_id);
     renderSupervisorReports(
       data.reports || [],
-      `AI analizó ${data.analyzed}/${data.fetched} conversaciones con actividad en ${data.activity_window_hours || 24}h (mensajes recientes de Chatwoot + historial en BD). Guardado: ${data.stored ? 'sí' : 'no'}${taggedInfo}${snapInfo}${data.errors?.length ? ` · Errores: ${data.errors.length}` : ''}${data.run_id ? ` · Log: ${data.run_id}` : ''}`
+      `AI analizó ${data.analyzed}/${eligible} conversaciones elegibles (${data.fetched} con actividad en ${data.activity_window_hours || 24}h)${skippedLabels}. Guardado: ${data.stored ? 'sí' : 'no'}${taggedInfo}${snapInfo}${data.errors?.length ? ` · Errores: ${data.errors.length}` : ''}${data.run_id ? ` · Log: ${data.run_id}` : ''}`
     );
     const reportsBranch = document.getElementById('reports-branch');
     if (reportsBranch) reportsBranch.value = payload.inboxId;
@@ -353,12 +359,14 @@ function switchAppTab(tabId) {
   const panels = {
     supervisor: 'tab-supervisor',
     reportes: 'tab-reportes',
-    seguimiento: 'tab-seguimiento'
+    seguimiento: 'tab-seguimiento',
+    configuracion: 'tab-configuracion'
   };
   const buttons = {
     supervisor: 'tab-btn-supervisor',
     reportes: 'tab-btn-reportes',
-    seguimiento: 'tab-btn-seguimiento'
+    seguimiento: 'tab-btn-seguimiento',
+    configuracion: 'tab-btn-configuracion'
   };
   for (const key of Object.keys(panels)) {
     const panel = document.getElementById(panels[key]);
@@ -376,6 +384,423 @@ function switchAppTab(tabId) {
   }
   if (tabId === 'reportes') loadReportsTab();
   if (tabId === 'seguimiento') loadFollowupTab();
+  if (tabId === 'configuracion') loadAgentSettingsTab();
+}
+
+const agentArchitectState = { catalog: [], selected: [] };
+const agentExcludedLabelsState = { labels: [] };
+const agentPromptState = { playbookBase: '', effectiveOnLoad: '' };
+
+function syncPromptModeBadge(useCustom) {
+  const badge = document.getElementById('cfg-prompt-mode-badge');
+  if (!badge) return;
+  badge.textContent = useCustom ? 'Personalizado' : 'Playbook integrado';
+  badge.classList.toggle('custom', Boolean(useCustom));
+}
+
+function toggleCustomPromptFields() {
+  syncPromptModeBadge(document.getElementById('cfg-use-custom-prompt')?.checked);
+}
+
+function loadPlaybookIntoPromptEditor() {
+  const useCustom = document.getElementById('cfg-use-custom-prompt');
+  if (useCustom) useCustom.checked = false;
+  const extra = document.getElementById('cfg-system-prompt-extra')?.value?.trim() || '';
+  const base = agentPromptState.playbookBase || '';
+  const ta = document.getElementById('cfg-effective-prompt');
+  if (ta) ta.value = extra ? `${base}\n\n${extra}` : base;
+  syncPromptModeBadge(false);
+}
+
+function onPromptExtraInput() {
+  if (!document.getElementById('cfg-use-custom-prompt')?.checked) {
+    loadPlaybookIntoPromptEditor();
+  }
+}
+
+function parsePromptFieldsForSave() {
+  const effective = (document.getElementById('cfg-effective-prompt')?.value || '').trim();
+  const extra = (document.getElementById('cfg-system-prompt-extra')?.value || '').trim();
+  const useCustomFlag = Boolean(document.getElementById('cfg-use-custom-prompt')?.checked);
+  const playbookWithExtra = extra
+    ? `${agentPromptState.playbookBase}\n\n${extra}`
+    : agentPromptState.playbookBase;
+  const edited = effective !== (agentPromptState.effectiveOnLoad || '').trim();
+  const useCustom = useCustomFlag || edited || effective !== playbookWithExtra.trim();
+
+  if (!useCustom) {
+    return {
+      use_custom_system_prompt: false,
+      system_prompt: '',
+      system_prompt_extra: extra
+    };
+  }
+
+  let systemPrompt = effective;
+  if (extra && effective.endsWith(extra)) {
+    systemPrompt = effective.slice(0, effective.length - extra.length).replace(/\n\n$/, '').trim();
+  }
+
+  if (systemPrompt.length < 40) {
+    throw new Error('El system prompt personalizado debe tener al menos 40 caracteres.');
+  }
+
+  return {
+    use_custom_system_prompt: true,
+    system_prompt: systemPrompt,
+    system_prompt_extra: extra
+  };
+}
+
+function renderCurrentConfigSummary(settings) {
+  const grid = document.getElementById('cfg-current-grid');
+  if (!grid || !settings) return;
+
+  const promptMode = settings.prompt_mode === 'personalizado' || settings.use_custom_system_prompt
+    ? 'Prompt personalizado'
+    : `Playbook integrado (${settings.playbook_version || 'v1'})`;
+  const promptChars = (settings.effective_system_prompt || '').length;
+  const architects = (settings.architect_sender_names || []).join(', ') || '—';
+  const stages = (settings.followup_stages || []).join(', ') || '—';
+  const sourceLabel =
+    settings.source === 'file' ? 'Archivo guardado (servidor)' : 'Variables de entorno (.env)';
+  const updated =
+    settings.updated_at
+      ? `${new Date(settings.updated_at).toLocaleString('es-MX')} · ${settings.updated_by || '?'}`
+      : 'Sin cambios guardados desde la UI';
+
+  grid.innerHTML = `
+    <div class="cfg-current-item"><label>Origen</label><span class="cfg-current-value">${escHtml(sourceLabel)}</span></div>
+    <div class="cfg-current-item"><label>Modelo OpenAI</label><span class="cfg-current-value">${escHtml(settings.openai_model || '—')}</span></div>
+    <div class="cfg-current-item"><label>Playbook</label><span class="cfg-current-value">${escHtml(settings.playbook_version || 'v2')}${settings.playbook_version_env ? ` (fijado en .env: ${escHtml(settings.playbook_version_env)})` : ''}</span></div>
+    <div class="cfg-current-item"><label>System prompt</label><span class="cfg-current-value">${escHtml(promptMode)} · ${promptChars} caracteres</span></div>
+    <div class="cfg-current-item"><label>AI Agent (Chatwoot)</label><span class="cfg-current-value">${escHtml(settings.ai_agent_sender_name || '—')}</span></div>
+    <div class="cfg-current-item cfg-wide"><label>Arquitectos activos</label><span class="cfg-current-value">${escHtml(architects)}</span></div>
+    <div class="cfg-current-item cfg-wide"><label>Etiquetas excluidas (no analizar)</label><span class="cfg-current-value">${escHtml((settings.excluded_chatwoot_labels || []).join(', ') || '—')}${settings.excluded_labels_env_override ? ' · lista fijada en .env' : ''}</span></div>
+    <div class="cfg-current-item"><label>Ventana Chatwoot</label><span class="cfg-current-value">${escHtml(String(settings.chatwoot_activity_window_hours))} h</span></div>
+    <div class="cfg-current-item"><label>Etiqueta inactiva</label><span class="cfg-current-value">≥ ${escHtml(String(settings.inactive_days_threshold))} días</span></div>
+    <div class="cfg-current-item"><label>Temperatura</label><span class="cfg-current-value">${escHtml(String(settings.openai_temperature))}</span></div>
+    <div class="cfg-current-item"><label>Rondas agente</label><span class="cfg-current-value">${escHtml(String(settings.agent_max_rounds))}</span></div>
+    <div class="cfg-current-item"><label>Tools / ronda</label><span class="cfg-current-value">${escHtml(String(settings.agent_max_tools_per_round))}</span></div>
+    <div class="cfg-current-item cfg-wide"><label>Etapas seguimiento</label><span class="cfg-current-value">${escHtml(stages)}</span></div>
+    <div class="cfg-current-item cfg-wide"><label>Última actualización</label><span class="cfg-current-value">${escHtml(updated)}</span></div>
+  `;
+}
+
+function renderArchitectPicker(catalog, selected) {
+  agentArchitectState.catalog = [...new Set((catalog || []).map(n => String(n).trim()).filter(Boolean))].sort(
+    (a, b) => a.localeCompare(b, 'es')
+  );
+  agentArchitectState.selected = [...new Set((selected || []).map(n => String(n).trim()).filter(Boolean))].sort(
+    (a, b) => a.localeCompare(b, 'es')
+  );
+
+  const select = document.getElementById('cfg-architect-add');
+  if (select) {
+    const currentVal = select.value;
+    select.innerHTML =
+      '<option value="">— Elegir arquitecto —</option>' +
+      agentArchitectState.catalog
+        .map(name => {
+          const active = agentArchitectState.selected.includes(name);
+          return `<option value="${escHtml(name)}"${active ? ' disabled' : ''}>${escHtml(name)}${active ? ' ✓ activo' : ''}</option>`;
+        })
+        .join('');
+    if (currentVal && agentArchitectState.catalog.includes(currentVal)) {
+      select.value = currentVal;
+    }
+  }
+
+  const chips = document.getElementById('cfg-architect-chips');
+  if (!chips) return;
+  if (!agentArchitectState.selected.length) {
+    chips.innerHTML = '<span class="architect-chips-empty">Ningún arquitecto activo. Elige uno del menú desplegable.</span>';
+    return;
+  }
+  chips.innerHTML = agentArchitectState.selected
+    .map(
+      name => `
+    <span class="architect-chip">
+      ${escHtml(name)}
+      <button type="button" title="Quitar" aria-label="Quitar" data-architect="${escHtml(encodeURIComponent(name))}" onclick="removeArchitectChip(this.getAttribute('data-architect'))">×</button>
+    </span>`
+    )
+    .join('');
+}
+
+function collectArchitectNames() {
+  return [...agentArchitectState.selected];
+}
+
+function normalizeLabelInput(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+function renderExcludedLabelChips(labels) {
+  agentExcludedLabelsState.labels = [...new Set((labels || []).map(normalizeLabelInput).filter(Boolean))].sort(
+    (a, b) => a.localeCompare(b, 'es')
+  );
+
+  const countEl = document.getElementById('cfg-excluded-label-count');
+  if (countEl) countEl.textContent = String(agentExcludedLabelsState.labels.length);
+
+  const chips = document.getElementById('cfg-excluded-label-chips');
+  if (!chips) return;
+  if (!agentExcludedLabelsState.labels.length) {
+    chips.innerHTML =
+      '<span class="architect-chips-empty">Ninguna etiqueta excluida. Las conversaciones con cualquier etiqueta podrán analizarse.</span>';
+    return;
+  }
+  chips.innerHTML = agentExcludedLabelsState.labels
+    .map(
+      label => `
+    <span class="excluded-label-chip">
+      ${escHtml(label)}
+      <button type="button" title="Quitar" aria-label="Quitar" data-label="${escHtml(encodeURIComponent(label))}" onclick="removeExcludedLabelChip(this.getAttribute('data-label'))">×</button>
+    </span>`
+    )
+    .join('');
+}
+
+function collectExcludedChatwootLabels() {
+  return [...agentExcludedLabelsState.labels];
+}
+
+function addExcludedChatwootLabel() {
+  const input = document.getElementById('cfg-excluded-label-new');
+  const raw = input?.value?.trim();
+  if (!raw) {
+    showError('Escribe el nombre de la etiqueta como aparece en Chatwoot.');
+    return;
+  }
+  const label = normalizeLabelInput(raw);
+  if (!/^[a-z0-9_-]+$/.test(label)) {
+    showError('Usa solo letras, números, guión y guión bajo (sin espacios).');
+    return;
+  }
+  if (!agentExcludedLabelsState.labels.includes(label)) {
+    agentExcludedLabelsState.labels.push(label);
+    agentExcludedLabelsState.labels.sort((a, b) => a.localeCompare(b, 'es'));
+  }
+  if (input) input.value = '';
+  renderExcludedLabelChips(agentExcludedLabelsState.labels);
+}
+
+function removeExcludedLabelChip(encodedLabel) {
+  const label = decodeURIComponent(encodedLabel || '');
+  agentExcludedLabelsState.labels = agentExcludedLabelsState.labels.filter(l => l !== label);
+  renderExcludedLabelChips(agentExcludedLabelsState.labels);
+}
+
+function addArchitectFromDropdown() {
+  const select = document.getElementById('cfg-architect-add');
+  const name = select?.value?.trim();
+  if (!name) return;
+  if (!agentArchitectState.selected.includes(name)) {
+    agentArchitectState.selected.push(name);
+    agentArchitectState.selected.sort((a, b) => a.localeCompare(b, 'es'));
+  }
+  if (select) select.value = '';
+  renderArchitectPicker(agentArchitectState.catalog, agentArchitectState.selected);
+}
+
+function removeArchitectChip(encodedName) {
+  const name = decodeURIComponent(encodedName || '');
+  agentArchitectState.selected = agentArchitectState.selected.filter(n => n !== name);
+  renderArchitectPicker(agentArchitectState.catalog, agentArchitectState.selected);
+}
+
+function addArchitectToCatalog() {
+  const input = document.getElementById('cfg-architect-new');
+  const name = input?.value?.trim();
+  if (!name) {
+    showError('Escribe el nombre del arquitecto como aparece en Chatwoot.');
+    return;
+  }
+  if (!agentArchitectState.catalog.includes(name)) {
+    agentArchitectState.catalog.push(name);
+    agentArchitectState.catalog.sort((a, b) => a.localeCompare(b, 'es'));
+  }
+  if (!agentArchitectState.selected.includes(name)) {
+    agentArchitectState.selected.push(name);
+    agentArchitectState.selected.sort((a, b) => a.localeCompare(b, 'es'));
+  }
+  if (input) input.value = '';
+  renderArchitectPicker(agentArchitectState.catalog, agentArchitectState.selected);
+}
+
+function fillAgentSettingsForm(settings) {
+  if (!settings) return;
+  const useCustom = document.getElementById('cfg-use-custom-prompt');
+  if (useCustom) useCustom.checked = Boolean(settings.use_custom_system_prompt);
+  const setVal = (id, val) => {
+    const el = document.getElementById(id);
+    if (el) el.value = val ?? '';
+  };
+  agentPromptState.playbookBase = settings.playbook_system_prompt || '';
+  agentPromptState.effectiveOnLoad = settings.effective_system_prompt || '';
+  setVal('cfg-effective-prompt', settings.effective_system_prompt);
+  setVal('cfg-system-prompt-extra', settings.system_prompt_extra);
+  setVal('cfg-workflow-extra', settings.agent_workflow_extra);
+  syncPromptModeBadge(settings.use_custom_system_prompt);
+  setVal('cfg-ai-agent-name', settings.ai_agent_sender_name);
+  setVal('cfg-inactive-days', settings.inactive_days_threshold);
+  setVal('cfg-window-hours', settings.chatwoot_activity_window_hours);
+  setVal('cfg-temperature', settings.openai_temperature);
+  setVal('cfg-max-rounds', settings.agent_max_rounds);
+  setVal('cfg-max-tools', settings.agent_max_tools_per_round);
+  setVal('cfg-followup-stages', (settings.followup_stages || []).join(', '));
+  setVal('cfg-playbook-version', settings.playbook_version || 'v2');
+  renderArchitectPicker(
+    settings.architect_catalog || settings.architect_sender_names,
+    settings.architect_sender_names
+  );
+  renderExcludedLabelChips(settings.excluded_chatwoot_labels || []);
+  renderCurrentConfigSummary(settings);
+  const meta = document.getElementById('cfg-meta');
+  if (meta) {
+    meta.textContent = settings.updated_at
+      ? `Última guardado: ${settings.updated_by || '?'} · ${new Date(settings.updated_at).toLocaleString('es-MX')} · origen: ${settings.source}`
+      : `Sin archivo guardado · origen: ${settings.source || 'env'}`;
+  }
+}
+
+function collectAgentSettingsFromForm() {
+  const promptFields = parsePromptFieldsForSave();
+  return {
+    ...promptFields,
+    agent_workflow_extra: document.getElementById('cfg-workflow-extra')?.value || '',
+    ai_agent_sender_name: document.getElementById('cfg-ai-agent-name')?.value.trim() || '',
+    architect_catalog: agentArchitectState.catalog,
+    architect_sender_names: collectArchitectNames(),
+    excluded_chatwoot_labels: collectExcludedChatwootLabels(),
+    inactive_days_threshold: parseInt(document.getElementById('cfg-inactive-days')?.value || '2', 10),
+    chatwoot_activity_window_hours: parseInt(document.getElementById('cfg-window-hours')?.value || '24', 10),
+    openai_temperature: parseFloat(document.getElementById('cfg-temperature')?.value || '0.1'),
+    agent_max_rounds: parseInt(document.getElementById('cfg-max-rounds')?.value || '10', 10),
+    agent_max_tools_per_round: parseInt(document.getElementById('cfg-max-tools')?.value || '5', 10),
+    followup_stages: (document.getElementById('cfg-followup-stages')?.value || '')
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean),
+    playbook_version: (document.getElementById('cfg-playbook-version')?.value || 'v2').trim()
+  };
+}
+
+async function loadAgentSettingsBackups() {
+  try {
+    const data = await supervisorApi('/api/supervisor/settings/backups?limit=25');
+    const select = document.getElementById('cfg-backup-select');
+    const hint = document.getElementById('cfg-backup-hint');
+    if (!select) return;
+    const backups = data.backups || [];
+    select.innerHTML =
+      '<option value="">— Elegir backup —</option>' +
+      backups
+        .map(b => `<option value="${escHtml(b.backup_id)}">${escHtml(b.label)}</option>`)
+        .join('');
+    if (hint) {
+      hint.textContent = backups.length
+        ? `${backups.length} backup(s). Cada guardado crea uno nuevo antes de aplicar cambios.`
+        : 'Sin backups aún; el primero se crea al guardar.';
+    }
+  } catch (err) {
+    const hint = document.getElementById('cfg-backup-hint');
+    if (hint) hint.textContent = 'No se pudieron listar backups: ' + err.message;
+  }
+}
+
+async function loadAgentSettingsTab() {
+  const status = document.getElementById('cfg-status');
+  try {
+    if (status) status.textContent = 'Cargando…';
+    const data = await supervisorApi('/api/supervisor/settings');
+    fillAgentSettingsForm(data.settings);
+    await loadAgentSettingsBackups();
+    if (status) status.textContent = '';
+  } catch (err) {
+    if (status) status.textContent = '';
+    showError('Configuración del agente: ' + err.message);
+  }
+}
+
+async function saveAgentSettings() {
+  const status = document.getElementById('cfg-status');
+  try {
+    if (status) status.textContent = 'Guardando (creando backup)…';
+    const payload = collectAgentSettingsFromForm();
+    const data = await supervisorApi('/api/supervisor/settings', {
+      method: 'PUT',
+      body: JSON.stringify(payload)
+    });
+    fillAgentSettingsForm(data.settings);
+    await loadAgentSettingsBackups();
+    const backupAt = data.backup?.backed_up_at
+      ? new Date(data.backup.backed_up_at).toLocaleString('es-MX')
+      : null;
+    if (status) status.textContent = backupAt ? `Guardado ✓ · backup ${backupAt}` : 'Guardado ✓';
+    setTimeout(() => {
+      if (status?.textContent?.startsWith('Guardado')) status.textContent = '';
+    }, 5000);
+  } catch (err) {
+    if (status) status.textContent = '';
+    showError('No se pudo guardar: ' + err.message);
+  }
+}
+
+async function restoreAgentSettingsBackup() {
+  const backupId = document.getElementById('cfg-backup-select')?.value?.trim();
+  if (!backupId) {
+    showError('Elige un backup de la lista.');
+    return;
+  }
+  if (
+    !window.confirm(
+      '¿Restaurar esta configuración? Se guardará un backup del estado actual antes de restaurar.'
+    )
+  ) {
+    return;
+  }
+  const status = document.getElementById('cfg-status');
+  try {
+    if (status) status.textContent = 'Restaurando backup…';
+    const data = await supervisorApi('/api/supervisor/settings/restore', {
+      method: 'POST',
+      body: JSON.stringify({ backup_id: backupId })
+    });
+    fillAgentSettingsForm(data.settings);
+    await loadAgentSettingsBackups();
+    if (status) status.textContent = 'Backup restaurado ✓';
+    setTimeout(() => {
+      if (status?.textContent === 'Backup restaurado ✓') status.textContent = '';
+    }, 4000);
+  } catch (err) {
+    if (status) status.textContent = '';
+    showError('No se pudo restaurar: ' + err.message);
+  }
+}
+
+async function resetAgentSettings() {
+  if (!window.confirm('¿Restaurar valores por defecto del entorno? Se eliminará la configuración guardada en el servidor.')) {
+    return;
+  }
+  const status = document.getElementById('cfg-status');
+  try {
+    if (status) status.textContent = 'Restaurando…';
+    const data = await supervisorApi('/api/supervisor/settings/reset', { method: 'POST', body: '{}' });
+    fillAgentSettingsForm(data.settings);
+    if (status) status.textContent = 'Restaurado ✓';
+    setTimeout(() => {
+      if (status?.textContent === 'Restaurado ✓') status.textContent = '';
+    }, 3000);
+  } catch (err) {
+    if (status) status.textContent = '';
+    showError('No se pudo restaurar: ' + err.message);
+  }
 }
 
 function goToFollowupTab() {
@@ -489,7 +914,7 @@ function renderReportsSummary(reports, grouped) {
 
 function renderReportCard(report) {
   const title = report.contact_name || `Conversación ${report.conversation_id}`;
-  const score = report.score_general == null ? '—' : String(report.score_general);
+  const score = formatReportScore(report);
   const architectNames = asList(report.architect_names).join(', ') || 'sin nombre identificado';
   const aiAgentBlock = participantSection(
     'AI Agent',
@@ -521,20 +946,27 @@ function renderReportCard(report) {
       <div class="supervisor-card-head">
         <div>
           <div class="supervisor-card-title">${escHtml(title)}</div>
-          <div class="supervisor-card-meta">${escHtml(analyzed)} · ${escHtml(report.stage || 'indefinida')} · Score ${escHtml(score)}</div>
+          <div class="supervisor-card-meta">${escHtml(analyzed)} · Score ${escHtml(score)}</div>
         </div>
         <div class="supervisor-card-badges">
+          ${stageBadge(report.stage)}
           ${inactiveInterestBadge(report)}
           ${riskBadge(report.risk_level)}
         </div>
       </div>
       <div class="supervisor-card-body">
         <div>${escHtml(report.summary || 'Sin resumen.')}</div>
+        ${formatAlertsBlock(report)}
         ${salesProcessSection(report)}
         ${aiAgentBlock}
         ${architectBlock}
         <div><strong>Recomendación:</strong> ${escHtml(report.recommendation || '—')}</div>
-        <div>${url}</div>
+        <div class="report-card-actions">
+          <button type="button" class="btn btn-secondary btn-sm btn-report-reanalyze" data-conversation-id="${escAttr(String(report.conversation_id))}" onclick="reanalyzeReportFullHistory(${Number(report.conversation_id)})" title="Trae todos los mensajes de Chatwoot y actualiza este reporte">
+            Reanalizar historial completo
+          </button>
+          ${url}
+        </div>
       </div>
     </div>
   `;
@@ -607,6 +1039,84 @@ async function loadReportsTab() {
   }
 }
 
+function buildReanalyzePayload(report) {
+  const fieldValue = id => document.getElementById(id)?.value?.trim() || '';
+  const baseUrl = fieldValue('cw-url').replace(/\/$/, '');
+  const token = fieldValue('cw-token');
+  const accountId = fieldValue('cw-account') || String(report.chatwoot_account_id || '');
+  const inboxId = report.inbox_id != null ? String(report.inbox_id) : fieldValue('cw-branch');
+  const branchName =
+    report.branch_name ||
+    BRANCH_NAME_BY_ID[inboxId] ||
+    BRANCH_NAME_BY_ID[fieldValue('cw-branch')] ||
+    '';
+  return {
+    baseUrl,
+    token,
+    accountId,
+    conversationId: report.conversation_id,
+    inboxId,
+    branchName,
+    contactName: report.contact_name || '',
+    contactPhone: report.contact_phone || '',
+    fullHistory: true,
+    forceAnalyze: true
+  };
+}
+
+function setReportReanalyzeBusy(conversationId, busy) {
+  document.querySelectorAll(`.btn-report-reanalyze[data-conversation-id="${conversationId}"]`).forEach(btn => {
+    btn.disabled = busy;
+    btn.textContent = busy ? 'Analizando…' : 'Reanalizar historial completo';
+  });
+}
+
+async function reanalyzeReportFullHistory(conversationId) {
+  const report = reportsTabRaw.find(r => Number(r.conversation_id) === Number(conversationId));
+  if (!report) {
+    showError('No se encontró el reporte en la lista actual.');
+    return;
+  }
+  if (reportReanalyzeInFlight.has(conversationId)) return;
+
+  hideError();
+  const payload = buildReanalyzePayload(report);
+  if (!payload.accountId) {
+    showError('Falta accountId: configura Chatwoot en Supervisor AI o guarda chatwoot_account_id en el reporte.');
+    return;
+  }
+
+  reportReanalyzeInFlight.add(conversationId);
+  setReportReanalyzeBusy(conversationId, true);
+  const label = report.contact_name || `#${conversationId}`;
+  showStatus(`Reanalizando historial completo de ${label}…`);
+
+  try {
+    const data = await supervisorApi('/api/supervisor/analyze/conversation', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+
+    if (data.report) {
+      const idx = reportsTabRaw.findIndex(r => Number(r.conversation_id) === Number(conversationId));
+      if (idx >= 0) reportsTabRaw[idx] = data.report;
+      else reportsTabRaw.unshift(data.report);
+      applyReportsSearch();
+    }
+
+    showStatus(
+      `Historial completo analizado para ${label}: ${data.messages_fetched ?? '—'} mensajes · guardado ${data.stored ? 'sí' : 'no'}`
+    );
+  } catch (err) {
+    showError('Error al reanalizar: ' + err.message);
+    console.error(err);
+    hideStatus();
+  } finally {
+    reportReanalyzeInFlight.delete(conversationId);
+    setReportReanalyzeBusy(conversationId, false);
+  }
+}
+
 /** @deprecated */
 async function loadSupervisorReports() {
   goToReportsTab();
@@ -620,7 +1130,7 @@ function buildFollowupQuery() {
   const branchId = document.getElementById('followup-branch')?.value?.trim() || '';
   if (branchId) params.set('inbox_id', branchId);
 
-  const stages = document.getElementById('followup-stages')?.value?.trim() || 'asesor_ventas,cotizacion_pendiente';
+  const stages = document.getElementById('followup-stages')?.value?.trim() || 'lead,asesor_venta';
   if (stages) params.set('stages', stages);
 
   return params.toString();
@@ -697,7 +1207,7 @@ function renderFollowupRow(item) {
         <div class="followup-id">Conv. ${escHtml(String(item.conversation_id))} · ${escHtml(phone)}</div>
       </td>
       <td>${escHtml(item.branch_name || '—')}</td>
-      <td>${escHtml(item.stage || '—')}</td>
+      <td>${stageBadge(item.stage) || '—'}</td>
       <td>${followupStatusBadge(item.followup_status)}</td>
       <td>${escHtml(item.vs_yesterday || '—')}</td>
       <td>${formatFollowupTimestamp(lastHuman)}</td>
@@ -780,7 +1290,7 @@ async function syncFollowupToday() {
 
   try {
     const branchId = document.getElementById('followup-branch')?.value?.trim() || '';
-    const stages = document.getElementById('followup-stages')?.value?.trim() || 'asesor_ventas,cotizacion_pendiente';
+    const stages = document.getElementById('followup-stages')?.value?.trim() || 'lead,asesor_venta';
     const limit = parseInt(document.getElementById('followup-limit')?.value || '100', 10);
     const branchName = BRANCH_NAME_BY_ID[branchId] || '';
 
@@ -812,6 +1322,45 @@ function riskBadge(riskLevel) {
   const key = String(riskLevel || 'medio').toLowerCase();
   const cls = ['bajo', 'medio', 'alto', 'grave'].includes(key) ? `risk-${key}` : 'risk-medio';
   return `<span class="badge ${cls}">${escHtml(key)}</span>`;
+}
+
+function normalizeStageKey(stage) {
+  return String(stage || 'indefinida')
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, '_');
+}
+
+function stageBadge(stage) {
+  const key = normalizeStageKey(stage);
+  const label = String(stage || 'indefinida').trim();
+  if (key === 'fuera_de_alcance') {
+    return `<span class="badge badge-stage-fuera" title="Esta versión solo evalúa lead y asesor_venta">fuera&nbsp;de&nbsp;alcance</span>`;
+  }
+  if (key === 'lead') {
+    return `<span class="badge badge-gray">${escHtml(label)}</span>`;
+  }
+  if (key === 'asesor_venta' || key === 'asesor_ventas') {
+    return `<span class="badge badge-green">${escHtml(label)}</span>`;
+  }
+  return `<span class="badge badge-gray">${escHtml(label)}</span>`;
+}
+
+function formatReportScore(report) {
+  const raw = report?.raw_analysis;
+  let scope = null;
+  if (raw && typeof raw === 'object') scope = raw.evaluation_scope;
+  else if (typeof raw === 'string') {
+    try {
+      scope = JSON.parse(raw).evaluation_scope;
+    } catch {
+      scope = null;
+    }
+  }
+  if (normalizeStageKey(report?.stage) === 'fuera_de_alcance' || scope === 'fuera_de_alcance') {
+    return 'no aplica';
+  }
+  return report?.score_general == null ? '—' : String(report.score_general);
 }
 
 function asList(value) {
@@ -959,6 +1508,17 @@ function inactiveInterestBadge(report) {
   return `<span class="badge badge-inactive" title="Sin interacción ≥${threshold} días con interés comercial previo">Inactiva ${daysLabel} · interés real</span>`;
 }
 
+function formatAlertsBlock(report) {
+  const list = Array.isArray(report.alerts) ? report.alerts.filter(Boolean) : [];
+  if (!list.length) return '';
+  return `<div class="supervisor-alerts">
+    <span class="supervisor-alerts-label" title="Alertas detectadas por el supervisor">
+      <span class="supervisor-alerts-icon" aria-hidden="true">⚠</span> Alertas:
+    </span>
+    <span class="supervisor-alerts-text">${escHtml(list.join(' · '))}</span>
+  </div>`;
+}
+
 function renderSupervisorReports(reports, summary) {
   const el = document.getElementById('supervisor-results');
   el.classList.add('show');
@@ -972,11 +1532,9 @@ function renderSupervisorReports(reports, summary) {
     <div class="supervisor-summary">${escHtml(summary || '')}</div>
     ${reports.map(report => {
       const title = report.contact_name || `Conversación ${report.conversation_id}`;
-      const score = report.score_general == null ? '—' : String(report.score_general);
+      const score = formatReportScore(report);
       const inactiveBadge = inactiveInterestBadge(report);
-      const alerts = Array.isArray(report.alerts) && report.alerts.length
-        ? `<div><strong>Alertas:</strong> ${escHtml(report.alerts.join(' · '))}</div>`
-        : '';
+      const alerts = formatAlertsBlock(report);
       const architectNames = asList(report.architect_names).join(', ') || 'sin nombre identificado';
       const aiAgentBlock = participantSection(
         'AI Agent',
@@ -1007,9 +1565,10 @@ function renderSupervisorReports(reports, summary) {
           <div class="supervisor-card-head">
             <div>
               <div class="supervisor-card-title">${escHtml(title)}</div>
-              <div class="supervisor-card-meta">${escHtml(report.branch_name || '—')} · ${escHtml(report.stage || 'indefinida')} · Score ${escHtml(score)}</div>
+              <div class="supervisor-card-meta">${escHtml(report.branch_name || '—')} · Score ${escHtml(score)}</div>
             </div>
             <div class="supervisor-card-badges">
+              ${stageBadge(report.stage)}
               ${inactiveBadge}
               ${riskBadge(report.risk_level)}
             </div>
@@ -1293,4 +1852,5 @@ document.addEventListener('DOMContentLoaded', async () => {
   const tab = params.get('tab');
   if (tab === 'reportes') switchAppTab('reportes');
   else if (tab === 'seguimiento') switchAppTab('seguimiento');
+  else if (tab === 'configuracion') switchAppTab('configuracion');
 });

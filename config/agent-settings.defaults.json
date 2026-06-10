@@ -1,0 +1,45 @@
+{
+  "playbook_version": "v2",
+  "use_custom_system_prompt": false,
+  "system_prompt": "",
+  "system_prompt_extra": "",
+  "agent_workflow_extra": "",
+  "ai_agent_sender_name": "Super Admin",
+  "architect_catalog": [
+    "Manuel Limon",
+    "Kevin Landy",
+    "Israel Monge",
+    "Abigail Perez"
+  ],
+  "architect_sender_names": [
+    "Manuel Limon",
+    "Kevin Landy",
+    "Israel Monge",
+    "Abigail Perez"
+  ],
+  "inactive_days_threshold": 2,
+  "chatwoot_activity_window_hours": 24,
+  "openai_temperature": 0.1,
+  "agent_max_rounds": 10,
+  "agent_max_tools_per_round": 5,
+  "followup_stages": ["lead", "asesor_venta"],
+  "excluded_chatwoot_labels": [
+    "anexob",
+    "contrato",
+    "pago",
+    "diseno",
+    "clientefeliz",
+    "cliente",
+    "provedor",
+    "proveedor",
+    "bkpdatosobt",
+    "bkplead",
+    "cubierta",
+    "garantia",
+    "granitodepot",
+    "cf",
+    "indeseable",
+    "pagofinal",
+    "test"
+  ]
+}

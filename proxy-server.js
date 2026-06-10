@@ -11,10 +11,14 @@ const {
   cleanBaseUrl,
   chatwootTokenFrom,
   fetchConversationsWithRecentActivity,
-  fetchRecentConversationMessages,
-  conversationHasRecentActivity,
+  fetchConversationById,
+  activityWindowSinceUnix,
   CHATWOOT_ACTIVITY_WINDOW_HOURS
 } = require('./services/chatwoot.service');
+const {
+  getExcludedChatwootLabels,
+  partitionConversationsByExcludedLabels
+} = require('./services/chatwoot-labels.service');
 const {
   isConfigured: supabaseConfigured,
   getAuthConfig,
@@ -22,31 +26,30 @@ const {
   storeReports,
   storeSnapshots,
   listReports,
-  fetchPreviousReport,
-  fetchSnapshotHistory,
   fetchReportsForFollowup,
   fetchSnapshotsByDate
 } = require('./services/supabase.service');
-const { isConfigured: openaiConfigured, analyzeWithOpenAI } = require('./services/openai.service');
+const { isConfigured: openaiConfigured } = require('./services/openai.service');
+const { processConversationForAnalysis } = require('./agent/process-conversation');
+const {
+  isAgentAnalyzeMode,
+  isLegacyAnalyzeMode,
+  getMaxAgentRounds
+} = require('./agent/analyze-config');
+const { getPlaybookVersion } = require('./supervisor/playbook');
+const {
+  getSettingsForApi,
+  saveSettings,
+  resetSettings,
+  listSettingsBackups,
+  restoreSettingsBackup
+} = require('./supervisor/settings.service');
 const {
   getSupervisorConfig,
   INACTIVITY_TAG,
   LEGACY_INACTIVITY_TAGS,
-  INACTIVE_DAYS_THRESHOLD,
-  uniqueNonEmpty,
-  buildStoredHistoricalContext,
-  mergeMetricsForAnalysis,
-  mergeQuoteDetectionWithStored,
-  buildAnalysisEnrichment,
-  mergeQuoteDetectionIntoAnalysis,
-  mergeInactivityTagging,
-  detectQuoteInMessages,
-  buildInactivityTagging,
-  rowForReport,
-  rowForSnapshot,
   calendarDateInTimezone,
   addCalendarDays,
-  extendMetricsWithFollowup,
   buildFollowupItems,
   summarizeFollowupItems,
   parseStagesParam,
@@ -228,11 +231,15 @@ async function handleSupervisorApi(req, res, pathname) {
       chatwoot_messages_page_size: getSupervisorConfig().CHATWOOT_MESSAGES_PAGE_SIZE,
       ai_agent_sender_name: getSupervisorConfig().AI_AGENT_SENDER_NAME,
       architect_sender_names: getSupervisorConfig().ARCHITECT_SENDER_NAMES,
-      inactive_days_threshold: INACTIVE_DAYS_THRESHOLD,
+      inactive_days_threshold: getSupervisorConfig().INACTIVE_DAYS_THRESHOLD,
       inactivity_tag: INACTIVITY_TAG,
       supervisor_max_conversations: getSupervisorConfig().SUPERVISOR_MAX_CONVERSATIONS,
       supervisor_max_conversation_pages: getSupervisorConfig().SUPERVISOR_MAX_CONVERSATION_PAGES,
-      chatwoot_activity_window_hours: CHATWOOT_ACTIVITY_WINDOW_HOURS,
+      chatwoot_activity_window_hours: getSupervisorConfig().CHATWOOT_ACTIVITY_WINDOW_HOURS,
+      excluded_chatwoot_labels: getExcludedChatwootLabels(),
+      openai_temperature: getSupervisorConfig().OPENAI_TEMPERATURE,
+      agent_max_tools_per_round: getSupervisorConfig().AGENT_MAX_TOOLS_PER_ROUND,
+      settings_source: getSettingsForApi().source,
       fetch_strategy: 'conversaciones_con_actividad_reciente_mas_bd',
       auth_required: AUTH_REQUIRED,
       auth_client_ready: AUTH_CLIENT_READY,
@@ -240,8 +247,65 @@ async function handleSupervisorApi(req, res, pathname) {
         level: process.env.SUPERVISOR_LOG_LEVEL || 'info',
         to_file: process.env.SUPERVISOR_LOG_TO_FILE === 'true',
         llm_warn_chars: parseInt(process.env.SUPERVISOR_LLM_WARN_CHARS || '80000', 10)
-      }
+      },
+      supervisor_agent_mode: isAgentAnalyzeMode(),
+      supervisor_legacy_mode: isLegacyAnalyzeMode(),
+      playbook_version: getPlaybookVersion(),
+      agent_max_rounds: getMaxAgentRounds()
     });
+    return;
+  }
+
+  if (pathname === '/api/supervisor/settings' && req.method === 'GET') {
+    sendJson(res, 200, { settings: getSettingsForApi() });
+    return;
+  }
+
+  if (pathname === '/api/supervisor/settings' && req.method === 'PUT') {
+    const body = await readJsonBody(req);
+    const auth = await verifySupabaseUser(req);
+    try {
+      const saved = saveSettings(body, { email: auth.user?.email || 'ui' });
+      sendJson(res, 200, {
+        ok: true,
+        settings: getSettingsForApi({ last_backup: saved.last_backup }),
+        backup: saved.last_backup
+      });
+    } catch (err) {
+      sendJson(res, 400, { error: err.message });
+    }
+    return;
+  }
+
+  if (pathname === '/api/supervisor/settings/backups' && req.method === 'GET') {
+    const url = new URL(req.url, 'http://internal');
+    const limit = Math.min(parseInt(url.searchParams.get('limit') || '25', 10), 50);
+    sendJson(res, 200, { backups: listSettingsBackups(limit) });
+    return;
+  }
+
+  if (pathname === '/api/supervisor/settings/restore' && req.method === 'POST') {
+    const body = await readJsonBody(req);
+    const auth = await verifySupabaseUser(req);
+    try {
+      const result = restoreSettingsBackup(body.backup_id || body.backupId, {
+        email: auth.user?.email || 'ui'
+      });
+      sendJson(res, 200, { ok: true, ...result });
+    } catch (err) {
+      sendJson(res, 400, { error: err.message });
+    }
+    return;
+  }
+
+  if (pathname === '/api/supervisor/settings/reset' && req.method === 'POST') {
+    const auth = await verifySupabaseUser(req);
+    try {
+      resetSettings({ email: auth.user?.email || 'reset' });
+      sendJson(res, 200, { ok: true, settings: getSettingsForApi() });
+    } catch (err) {
+      sendJson(res, 400, { error: err.message });
+    }
     return;
   }
 
@@ -297,6 +361,144 @@ async function handleSupervisorApi(req, res, pathname) {
     return;
   }
 
+  if (pathname === '/api/supervisor/analyze/conversation' && req.method === 'POST') {
+    const body = await readJsonBody(req);
+    const baseUrl = cleanBaseUrl(body.baseUrl);
+    const accountId = String(body.accountId || process.env.CHATWOOT_ACCOUNT_ID || '').trim();
+    const conversationId = parseInt(
+      body.conversationId || body.conversation_id || '',
+      10
+    );
+    const inboxId = body.inboxId || body.inbox_id || '';
+    const branchName = body.branchName || body.branch || '';
+    const fullHistory = body.fullHistory !== false && body.full_history !== false;
+    const forceAnalyze = body.forceAnalyze !== false && body.force_analyze !== false;
+    const token = chatwootTokenFrom(req, body);
+
+    const log = createSupervisorRunLogger({
+      inbox_id: inboxId,
+      branch_name: branchName,
+      account_id: accountId,
+      conversation_id: conversationId,
+      full_history: fullHistory
+    });
+
+    try {
+      if (!accountId) throw new Error('Falta accountId o CHATWOOT_ACCOUNT_ID.');
+      if (!Number.isFinite(conversationId) || conversationId <= 0) {
+        throw new Error('Falta conversationId válido.');
+      }
+      if (!token) {
+        throw new Error('Falta token de Chatwoot: usa CHATWOOT_API_TOKEN en .env o envíalo en la petición.');
+      }
+      if (!openaiConfigured()) throw new Error('Falta OPENAI_API_KEY en .env.');
+
+      log.stepStart('chatwoot_fetch_conversation', { conversation_id: conversationId });
+      let conversation = await fetchConversationById({
+        baseUrl,
+        accountId,
+        conversationId,
+        token,
+        logger: log
+      });
+
+      if (!conversation || !conversation.id) {
+        conversation = {
+          id: conversationId,
+          inbox_id: inboxId || null,
+          status: body.status || 'open',
+          meta: {
+            sender: {
+              name: body.contactName || body.contact_name || '',
+              phone_number: body.contactPhone || body.contact_phone || ''
+            }
+          }
+        };
+        log.warn('chatwoot_conversation_fallback', {
+          conversation_id: conversationId,
+          reason: 'respuesta_vacia_usando_datos_peticion'
+        });
+      }
+
+      const resolvedInboxId = conversation.inbox_id || inboxId;
+      const windowHours = getSupervisorConfig().CHATWOOT_ACTIVITY_WINDOW_HOURS;
+      const sinceUnix = fullHistory ? 0 : activityWindowSinceUnix(windowHours);
+      const snapshotDate = calendarDateInTimezone();
+      const convLabel = `conv_${conversationId}`;
+
+      log.stepEnd('chatwoot_fetch_conversation', {
+        conversation_id: conversation.id,
+        inbox_id: resolvedInboxId
+      });
+
+      const result = await processConversationForAnalysis({
+        conversation,
+        baseUrl,
+        accountId,
+        branchName,
+        inboxId: resolvedInboxId,
+        token,
+        sinceUnix,
+        windowHours,
+        snapshotDate,
+        logger: log,
+        convLabel,
+        fullHistory,
+        forceAnalyze
+      });
+
+      if (result.skipped) {
+        const reason = result.skip_reason || 'conversacion_omitida';
+        log.finish('skipped', { reason, matched_labels: result.matched_labels || null });
+        sendJson(res, 409, {
+          error: reason === 'excluded_chatwoot_label'
+            ? `Conversación con etiqueta excluida: ${(result.matched_labels || []).join(', ')}`
+            : 'No se pudo analizar esta conversación.',
+          skip_reason: reason,
+          matched_labels: result.matched_labels || null
+        });
+        return;
+      }
+
+      log.stepStart('supabase_store_reports');
+      const storeResult = await storeReports([result.reportRow]);
+      log.stepEnd('supabase_store_reports', storeResult);
+
+      log.stepStart('supabase_store_snapshots');
+      const snapshotResult =
+        supabaseConfigured() && result.snapshotRow
+          ? await storeSnapshots([result.snapshotRow])
+          : { stored: false, count: 0 };
+      log.stepEnd('supabase_store_snapshots', snapshotResult);
+
+      log.finish('completed', {
+        conversation_id: conversationId,
+        messages_fetched: result.messages_fetched,
+        full_history: fullHistory,
+        stage: result.reportRow.stage
+      });
+
+      sendJson(res, 200, {
+        ok: true,
+        run_id: log.runId,
+        conversation_id: conversationId,
+        full_history: fullHistory,
+        messages_fetched: result.messages_fetched,
+        analysis_mode: result.analysis_mode,
+        playbook_version: getPlaybookVersion(),
+        stored: storeResult.stored,
+        snapshot_stored: snapshotResult.stored,
+        report: result.reportRow,
+        debug: log.toJSON()
+      });
+    } catch (err) {
+      log.error('analyze_conversation_failed', { error: err.message });
+      log.finish('failed', { error: err.message });
+      throw err;
+    }
+    return;
+  }
+
   if (pathname === '/api/supervisor/analyze' && req.method === 'POST') {
     const body = await readJsonBody(req);
     const baseUrl = cleanBaseUrl(body.baseUrl);
@@ -305,7 +507,12 @@ async function handleSupervisorApi(req, res, pathname) {
     const branchName = body.branchName || body.branch || '';
     const windowHours = Math.max(
       1,
-      parseInt(body.activityWindowHours || body.activity_window_hours || CHATWOOT_ACTIVITY_WINDOW_HOURS, 10)
+      parseInt(
+        body.activityWindowHours ||
+          body.activity_window_hours ||
+          getSupervisorConfig().CHATWOOT_ACTIVITY_WINDOW_HOURS,
+        10
+      )
     );
     const token = chatwootTokenFrom(req, body);
     const includeFullDebug = body.debug !== false;
@@ -331,12 +538,23 @@ async function handleSupervisorApi(req, res, pathname) {
         windowHours,
         logger: log
       });
-      const conversations = activityFetch.conversations;
+      const conversationsFetched = activityFetch.conversations;
       const sinceUnix = activityFetch.sinceUnix;
       log.stepEnd('chatwoot_list_conversations', {
-        conversations_with_activity: conversations.length,
+        conversations_with_activity: conversationsFetched.length,
         pages_scanned: activityFetch.pages_scanned,
         since_unix: sinceUnix
+      });
+
+      const labelPartition = partitionConversationsByExcludedLabels(conversationsFetched);
+      const conversations = labelPartition.eligible;
+      const skippedByLabel = labelPartition.skipped;
+
+      log.stepEnd('chatwoot_filter_excluded_labels', {
+        fetched: conversationsFetched.length,
+        eligible: conversations.length,
+        skipped: skippedByLabel.length,
+        excluded_label_catalog: getExcludedChatwootLabels().length
       });
 
       const rows = [];
@@ -345,7 +563,11 @@ async function handleSupervisorApi(req, res, pathname) {
       const snapshotDate = calendarDateInTimezone();
       const total = conversations.length;
 
-      log.setSummary({ conversations_total: total });
+      log.setSummary({
+        conversations_fetched: conversationsFetched.length,
+        conversations_total: total,
+        skipped_excluded_labels: skippedByLabel.length
+      });
 
       for (let index = 0; index < conversations.length; index++) {
         const conversation = conversations[index];
@@ -358,128 +580,31 @@ async function handleSupervisorApi(req, res, pathname) {
         });
 
         try {
-          log.stepStart(`${convLabel}_supabase_previous_report`);
-          const previousReport = await fetchPreviousReport(conversation.id);
-          const storedHistorical = buildStoredHistoricalContext(previousReport);
-          log.stepEnd(`${convLabel}_supabase_previous_report`, {
-            has_previous: Boolean(previousReport),
-            narrative_chars: storedHistorical?.narrative_for_ai?.length || 0
-          });
-
-          log.stepStart(`${convLabel}_chatwoot_recent_messages`);
-          const recentMessages = await fetchRecentConversationMessages({
-            baseUrl,
-            accountId,
-            conversationId: conversation.id,
-            token,
-            sinceUnix,
-            logger: log
-          });
-          log.stepEnd(`${convLabel}_chatwoot_recent_messages`, {
-            messages_count: recentMessages.length,
-            sample_ids: recentMessages.slice(0, 3).map(m => m.id)
-          });
-
-          if (
-            !recentMessages.length &&
-            !storedHistorical &&
-            !conversationHasRecentActivity(conversation, sinceUnix)
-          ) {
-            log.warn(`${convLabel}_skipped`, { reason: 'sin_mensajes_ni_historico_ni_actividad' });
-            continue;
-          }
-
-          const metricsMerged = mergeMetricsForAnalysis(
-            previousReport?.metrics,
-            recentMessages,
-            windowHours
-          );
-          const metrics = extendMetricsWithFollowup(recentMessages, snapshotDate, metricsMerged);
-          const actualInboxId = conversation.inbox_id || inboxId;
-          const quoteRecent = detectQuoteInMessages(recentMessages, actualInboxId, branchName);
-          const quoteDetection = mergeQuoteDetectionWithStored(quoteRecent, storedHistorical);
-          metrics.quote_detection = quoteDetection;
-          const inactivityTagging = buildInactivityTagging(
-            recentMessages,
-            metricsMerged,
-            quoteDetection,
-            storedHistorical
-          );
-          metrics.inactivity_tagging = inactivityTagging;
-          metrics.days_since_last_interaction = inactivityTagging.days_since_last_interaction;
-          metrics.supervisor_tags = inactivityTagging.supervisor_tags;
-
-          const snapshotHistory = await fetchSnapshotHistory(conversation.id, 14);
-          const enrichment = buildAnalysisEnrichment({
-            recentMessages,
-            metrics,
-            previousReport,
-            snapshotHistory,
-            quoteDetection,
-            inactivityTagging,
-            storedHistorical,
-            activityWindowHours: windowHours
-          });
-          metrics.new_messages_at_analysis =
-            enrichment.activity_delta.new_messages_since_last_analysis;
-
-          const transcriptRecentChars =
-            enrichment.transcripts?.ultimas_horas_chatwoot?.transcript?.length || 0;
-          const transcriptDbChars =
-            enrichment.transcripts?.historico_resumido_bd?.transcript?.length || 0;
-          log.info(`${convLabel}_enrichment_ready`, {
-            transcript_recent_chars: transcriptRecentChars,
-            transcript_db_chars: transcriptDbChars,
-            analysis_mode: enrichment.analysis_mode,
-            new_messages_since_last: enrichment.activity_delta.new_messages_since_last_analysis
-          });
-
-          const contact = conversation.meta?.sender || conversation.contact || {};
-          let analysis = await analyzeWithOpenAI({
+          const result = await processConversationForAnalysis({
             conversation,
-            contact,
-            messages: recentMessages,
-            metrics,
-            enrichment,
             baseUrl,
             accountId,
             branchName,
             inboxId,
-            logger: log
-          });
-          analysis = mergeQuoteDetectionIntoAnalysis(analysis, quoteDetection);
-          analysis = mergeInactivityTagging(analysis, inactivityTagging);
-
-          const reportRow = rowForReport({
-            conversation,
-            contact,
-            messages: recentMessages,
-            metrics: {
-              ...metricsMerged,
-              ...metrics,
-              quote_detection: quoteDetection,
-              inactivity_tagging: inactivityTagging,
-              days_since_last_interaction: inactivityTagging.days_since_last_interaction,
-              supervisor_tags: uniqueNonEmpty([
-                ...(inactivityTagging.supervisor_tags || []),
-                ...(analysis.supervisor_tags || [])
-              ])
-            },
-            analysis,
-            baseUrl,
-            accountId,
-            branchName,
-            inboxId
-          });
-          rows.push(reportRow);
-          snapshotRows.push(rowForSnapshot({
-            report: reportRow,
-            metrics,
+            token,
+            sinceUnix,
+            windowHours,
             snapshotDate,
-            baseUrl,
-            accountId
-          }));
-          log.info(`${convLabel}_analyzed_ok`, { stage: reportRow.stage, risk: reportRow.risk_level });
+            logger: log,
+            convLabel
+          });
+
+          if (result.skipped) continue;
+
+          rows.push(result.reportRow);
+          snapshotRows.push(result.snapshotRow);
+          log.info(`${convLabel}_analyzed_ok`, {
+            stage: result.reportRow.stage,
+            risk: result.reportRow.risk_level,
+            analysis_mode: result.analysis_mode,
+            agent_rounds: result.agent_meta?.rounds ?? null,
+            fallback_used: result.agent_meta?.fallback_used ?? false
+          });
         } catch (err) {
           log.error(`${convLabel}_failed`, { error: err.message });
           errors.push({ conversation_id: conversation.id, error: err.message });
@@ -502,7 +627,9 @@ async function handleSupervisorApi(req, res, pathname) {
 
       log.finish('completed', {
         analyzed: rows.length,
-        fetched: conversations.length,
+        fetched: conversationsFetched.length,
+        eligible_after_label_filter: conversations.length,
+        skipped_excluded_labels: skippedByLabel.length,
         errors_count: errors.length,
         tagged_inactive_interest: taggedInactive
       });
@@ -511,12 +638,21 @@ async function handleSupervisorApi(req, res, pathname) {
       sendJson(res, 200, {
         run_id: log.runId,
         analyzed: rows.length,
-        fetched: conversations.length,
+        fetched: conversationsFetched.length,
+        eligible_after_label_filter: conversations.length,
+        skipped_excluded_labels: skippedByLabel.length,
+        skipped_conversations: skippedByLabel.slice(0, 100),
         activity_window_hours: windowHours,
         pages_scanned: activityFetch.pages_scanned,
-        fetch_strategy: 'actividad_reciente_chatwoot_mas_historico_supabase',
+        fetch_strategy: isLegacyAnalyzeMode()
+          ? 'legacy_single_prompt'
+          : `agente_herramientas_playbook_${getPlaybookVersion()}`,
+        supervisor_agent_mode: isAgentAnalyzeMode(),
+        supervisor_legacy_mode: isLegacyAnalyzeMode(),
+        playbook_version: getPlaybookVersion(),
+        agent_max_rounds: getMaxAgentRounds(),
         tagged_inactive_interest: taggedInactive,
-        inactive_days_threshold: INACTIVE_DAYS_THRESHOLD,
+        inactive_days_threshold: getSupervisorConfig().INACTIVE_DAYS_THRESHOLD,
         stored: storeResult.stored,
         store_count: storeResult.count,
         snapshots_stored: snapshotResult.stored,

@@ -1,6 +1,10 @@
 services:
   chatwoot-dashboard:
     build: .
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
     ports:
       # Puerto principal (ej. http://localhost:8080); proxy vacío en la UI = mismo origen.
       - "${HOST_PORT:-8080}:3001"
@@ -22,3 +26,4 @@ services:
       SUPABASE_ANON_KEY: "${SUPABASE_ANON_KEY:-}"
       AUTH_REQUIRED: "${AUTH_REQUIRED:-true}"
       SUPABASE_REPORTS_TABLE: "${SUPABASE_REPORTS_TABLE:-conversation_supervision_reports}"
+      SUPERVISOR_PLAYBOOK_VERSION: "${SUPERVISOR_PLAYBOOK_VERSION:-v2}"

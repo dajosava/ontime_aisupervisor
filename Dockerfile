@@ -7,7 +7,11 @@ RUN npm ci --omit=dev
 
 COPY proxy-server.js index.html login.html auth.js app.js README.md supabase-schema.sql ./
 COPY services ./services/
+COPY agent ./agent/
+COPY supervisor ./supervisor/
+COPY config ./config/
 COPY utils ./utils/
+RUN mkdir -p /app/data
 COPY images ./images/
 
 ENV PORT=3001
