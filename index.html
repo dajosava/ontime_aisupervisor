@@ -684,6 +684,49 @@
     color: var(--accent);
   }
 
+  .cron-schedules-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 8px;
+    font-size: 13px;
+  }
+
+  .cron-schedules-table th,
+  .cron-schedules-table td {
+    padding: 8px 6px;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+    vertical-align: middle;
+  }
+
+  .cron-schedules-table th {
+    font-family: var(--mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: rgba(255, 255, 255, 0.55);
+  }
+
+  .cron-schedules-table input[type="time"],
+  .cron-schedules-table select {
+    width: 100%;
+    min-width: 90px;
+  }
+
+  .cron-scheduler-status {
+    margin-top: 10px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.65);
+    line-height: 1.5;
+  }
+
+  .cron-last-runs {
+    margin-top: 8px;
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.5);
+  }
+
   .reports-filters {
     display: flex;
     flex-wrap: wrap;
@@ -1888,6 +1931,52 @@
             <label for="cfg-followup-stages">Etapas seguimiento diario (coma)</label>
             <input type="text" id="cfg-followup-stages" placeholder="lead, asesor_venta">
           </div>
+        </div>
+      </div>
+
+      <div class="agent-config-block">
+        <h3>Análisis programado (scheduler)</h3>
+        <p class="agent-config-hint">
+          Ejecuta automáticamente «Analizar con AI» por sucursal a la hora indicada (zona horaria Sonora por defecto).
+          Requiere <code>CHATWOOT_API_TOKEN</code> y <code>OPENAI_API_KEY</code> en el servidor. Tras guardar, el scheduler se recarga sin reiniciar el contenedor.
+        </p>
+        <div class="field-row" style="margin-top:12px">
+          <label class="checkbox-label">
+            <input type="checkbox" id="cfg-cron-enabled">
+            Activar análisis nocturno automático
+          </label>
+        </div>
+        <div class="field-row" style="margin-top:10px">
+          <div class="field">
+            <label for="cfg-cron-timezone">Zona horaria</label>
+            <input type="text" id="cfg-cron-timezone" placeholder="America/Hermosillo" value="America/Hermosillo">
+          </div>
+          <div class="field">
+            <label class="checkbox-label" style="margin-top:24px">
+              <input type="checkbox" id="cfg-cron-sync-followup" checked>
+              Sincronizar seguimiento diario tras cada análisis
+            </label>
+          </div>
+        </div>
+        <div style="margin-top:14px">
+          <label>Horarios por sucursal (inbox Chatwoot)</label>
+          <table class="cron-schedules-table" id="cfg-cron-schedules-table">
+            <thead>
+              <tr>
+                <th>Inbox</th>
+                <th>Sucursal</th>
+                <th>Hora</th>
+                <th>Activo</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="cfg-cron-schedules-body"></tbody>
+          </table>
+          <button type="button" class="btn btn-secondary btn-sm" style="margin-top:8px" onclick="addCronScheduleRow()">+ Añadir horario</button>
+        </div>
+        <div id="cfg-cron-status" class="cron-scheduler-status" aria-live="polite"></div>
+        <div class="cfg-prompt-actions" style="margin-top:10px">
+          <button type="button" class="btn btn-secondary btn-sm" onclick="runScheduledAnalyzeNow()">Ejecutar ahora (todas las sucursales activas)</button>
         </div>
       </div>
 

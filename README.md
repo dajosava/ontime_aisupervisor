@@ -59,6 +59,7 @@ Cada conversación activa se supervisa con un **agente OpenAI** que sigue el **p
 - **Backups** automáticos al guardar; restauración desde historial en la UI.
 - Persistencia en `data/agent-settings.json` (no versionado; defaults en `config/agent-settings.defaults.json`).
 - **Etiquetas Chatwoot excluidas**: si la conversación tiene alguna etiqueta de la lista, **no se analiza** (`skipped_excluded_labels` en la respuesta de analyze).
+- **Análisis programado (scheduler)**: horarios por sucursal/inbox, zona horaria Sonora, ejecución automática nocturna con `node-cron` (sin cron externo en el VPS).
 
 ---
 
@@ -273,7 +274,7 @@ flowchart LR
 | **Supervisor AI** | Configuración Chatwoot, análisis incremental, log de ejecución, resumen de conversaciones ignoradas por etiqueta |
 | **Reportes** | Consulta de análisis persistidos en Supabase (badge naranja `fuera_de_alcance` en etapas fuera de alcance v2) |
 | **Seguimiento diario** | Diff de snapshots por etapa (`lead`, `asesor_venta`) y sincronización del día |
-| **Configuración del agente** | Playbook v2, prompt, arquitectos, parámetros LLM, etiquetas excluidas, backups y restauración |
+| **Configuración del agente** | Playbook v2, prompt, arquitectos, parámetros LLM, etiquetas excluidas, **horarios scheduler**, backups y restauración |
 
 ---
 
@@ -391,6 +392,11 @@ Recomendado: `http://localhost:8080/` con **Proxy local** vacío en la UI.
 | `SUPERVISOR_SETTINGS_MAX_BACKUPS` | Máximo de backups conservados |
 | `SUPERVISOR_OPENAI_TEMPERATURE` | Temperatura del modelo (también en UI) |
 | `FOLLOWUP_STAGES` | Etapas del seguimiento diario (defecto `lead,asesor_venta`) |
+| `SUPERVISOR_CRON_ENABLED` | `true` = activar scheduler (también en UI) |
+| `SUPERVISOR_CRON_SCHEDULES` | CSV `inbox:HH:MM` ej. `51:22:00,49:22:30,48:23:00` |
+| `SUPERVISOR_CRON_TIMEZONE` | Zona horaria cron (defecto `America/Hermosillo`) |
+| `SUPERVISOR_CRON_SYNC_FOLLOWUP` | `false` = no sincronizar seguimiento tras analyze automático |
+| `SCHEDULER_SECRET` | Opcional: header `x-scheduler-secret` en `POST /scheduler/run` sin JWT |
 
 Plantilla completa: [`.env.example`](.env.example).
 
@@ -425,6 +431,8 @@ Antes del primer uso: ejecutar [`supabase-schema.sql`](supabase-schema.sql) en S
 | POST | `/api/supervisor/settings/reset` | Restaurar defaults de `config/agent-settings.defaults.json` |
 | GET | `/api/supervisor/settings/backups` | Listar backups del prompt/config |
 | POST | `/api/supervisor/settings/restore` | Restaurar desde un backup (`backup_id`) |
+| GET | `/api/supervisor/scheduler/status` | Estado del scheduler (jobs activos, últimas ejecuciones) |
+| POST | `/api/supervisor/scheduler/run` | Ejecutar ahora (JWT o `x-scheduler-secret`) |
 
 La respuesta de `POST /analyze` puede incluir: `skipped_excluded_labels`, `skipped_conversations`, `eligible_after_label_filter`.
 

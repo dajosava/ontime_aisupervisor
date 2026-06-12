@@ -16,6 +16,8 @@ const MAX_SETTINGS_BACKUPS = Math.max(
 
 const DEFAULTS_PATH = path.join(__dirname, '..', 'config', 'agent-settings.defaults.json');
 
+const { normalizeCronSchedules, parseEnvCronSchedules, validateCronSchedules } = require('./cron-config');
+
 let cache = null;
 
 function readJsonFile(filePath) {
@@ -137,6 +139,22 @@ function buildEnvDefaults() {
         process.env.SUPERVISOR_EXCLUDED_CHATWOOT_LABELS,
         fileDefaults.excluded_chatwoot_labels || loadExcludedLabelsFileDefaults()
       )
+    ),
+    cron_enabled:
+      process.env.SUPERVISOR_CRON_ENABLED === 'true'
+        ? true
+        : process.env.SUPERVISOR_CRON_ENABLED === 'false'
+          ? false
+          : fileDefaults.cron_enabled ?? false,
+    cron_timezone: process.env.SUPERVISOR_CRON_TIMEZONE || fileDefaults.cron_timezone || 'America/Hermosillo',
+    cron_sync_followup:
+      process.env.SUPERVISOR_CRON_SYNC_FOLLOWUP === 'false'
+        ? false
+        : fileDefaults.cron_sync_followup ?? true,
+    cron_schedules: normalizeCronSchedules(
+      parseEnvCronSchedules(process.env.SUPERVISOR_CRON_SCHEDULES).length
+        ? parseEnvCronSchedules(process.env.SUPERVISOR_CRON_SCHEDULES)
+        : fileDefaults.cron_schedules || []
     )
   };
 }
@@ -180,6 +198,15 @@ function normalizeSettings(raw, envDefaults) {
       Array.isArray(merged.excluded_chatwoot_labels)
         ? merged.excluded_chatwoot_labels
         : envList(merged.excluded_chatwoot_labels, envDefaults.excluded_chatwoot_labels)
+    ),
+    cron_enabled: merged.cron_enabled != null ? Boolean(merged.cron_enabled) : Boolean(envDefaults.cron_enabled),
+    cron_timezone: String(merged.cron_timezone || envDefaults.cron_timezone || 'America/Hermosillo').trim(),
+    cron_sync_followup:
+      merged.cron_sync_followup != null
+        ? Boolean(merged.cron_sync_followup)
+        : Boolean(envDefaults.cron_sync_followup),
+    cron_schedules: normalizeCronSchedules(
+      Array.isArray(merged.cron_schedules) ? merged.cron_schedules : envDefaults.cron_schedules
     )
   };
 }
@@ -212,6 +239,10 @@ function validateSettings(settings) {
         `Etiqueta inválida "${label}": usa solo letras minúsculas, números, guión y guión bajo.`
       );
     }
+  }
+  validateCronSchedules(settings.cron_schedules || []);
+  if (settings.cron_timezone && settings.cron_timezone.length > 64) {
+    throw new Error('Zona horaria demasiado larga.');
   }
   return settings;
 }
@@ -263,6 +294,10 @@ function persistableSettingsPayload(source) {
     agent_max_tools_per_round: s.agent_max_tools_per_round,
     followup_stages: s.followup_stages,
     excluded_chatwoot_labels: s.excluded_chatwoot_labels,
+    cron_enabled: s.cron_enabled,
+    cron_timezone: s.cron_timezone,
+    cron_sync_followup: s.cron_sync_followup,
+    cron_schedules: s.cron_schedules,
     updated_at: s.updated_at || null,
     updated_by: s.updated_by || null
   };
@@ -443,6 +478,10 @@ function saveSettings(updates, meta = {}) {
     agent_max_tools_per_round: merged.agent_max_tools_per_round,
     followup_stages: merged.followup_stages,
     excluded_chatwoot_labels: merged.excluded_chatwoot_labels,
+    cron_enabled: merged.cron_enabled,
+    cron_timezone: merged.cron_timezone,
+    cron_sync_followup: merged.cron_sync_followup,
+    cron_schedules: merged.cron_schedules,
     updated_at: merged.updated_at,
     updated_by: merged.updated_by
   };
@@ -453,6 +492,11 @@ function saveSettings(updates, meta = {}) {
     require('../services/chatwoot-labels.service').invalidateExcludedLabelsCache();
   } catch {
     /* ignore */
+  }
+  try {
+    require('./scheduler.service').reloadScheduler();
+  } catch (err) {
+    console.warn('[scheduler] No se pudo recargar tras guardar settings:', err.message);
   }
   const saved = loadSettings({ forceReload: true });
   saved.last_backup = backup;
@@ -479,6 +523,11 @@ function resetSettings(meta = {}) {
     require('../services/chatwoot-labels.service').invalidateExcludedLabelsCache();
   } catch {
     /* ignore */
+  }
+  try {
+    require('./scheduler.service').reloadScheduler();
+  } catch (err) {
+    console.warn('[scheduler] No se pudo recargar tras reset settings:', err.message);
   }
   return loadSettings({ forceReload: true });
 }
@@ -507,6 +556,13 @@ function getSettingsForApi(extra = {}) {
     followup_stages: s.followup_stages,
     excluded_chatwoot_labels: s.excluded_chatwoot_labels,
     excluded_labels_env_override: Boolean(process.env.SUPERVISOR_EXCLUDED_CHATWOOT_LABELS?.trim()),
+    cron_enabled: s.cron_enabled,
+    cron_timezone: s.cron_timezone,
+    cron_sync_followup: s.cron_sync_followup,
+    cron_schedules: s.cron_schedules,
+    cron_env_enabled: process.env.SUPERVISOR_CRON_ENABLED === 'true',
+    cron_env_schedules: process.env.SUPERVISOR_CRON_SCHEDULES || null,
+    scheduler: require('./scheduler.service').getSchedulerStatus(),
     updated_at: s.updated_at,
     updated_by: s.updated_by,
     source: s.source,

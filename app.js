@@ -15,6 +15,15 @@ let reportsTabRaw = [];
 let followupItemsRaw = [];
 const reportReanalyzeInFlight = new Set();
 
+const CRON_INBOX_OPTIONS = [
+  { id: '51', name: 'cenontime' },
+  { id: '49', name: 'HmoOntime' },
+  { id: '48', name: 'nogontime' },
+  { id: '52', name: 'FB Hermosillo OTC' }
+];
+
+const agentCronState = { schedules: [] };
+
 const FOLLOWUP_STATUS_ORDER = [
   'sin_sincronizar',
   'cliente_sin_respuesta',
@@ -483,6 +492,7 @@ function renderCurrentConfigSummary(settings) {
     <div class="cfg-current-item"><label>Rondas agente</label><span class="cfg-current-value">${escHtml(String(settings.agent_max_rounds))}</span></div>
     <div class="cfg-current-item"><label>Tools / ronda</label><span class="cfg-current-value">${escHtml(String(settings.agent_max_tools_per_round))}</span></div>
     <div class="cfg-current-item cfg-wide"><label>Etapas seguimiento</label><span class="cfg-current-value">${escHtml(stages)}</span></div>
+    <div class="cfg-current-item cfg-wide"><label>Scheduler</label><span class="cfg-current-value">${settings.cron_enabled ? `Activo · ${(settings.cron_schedules || []).filter(s => s.enabled !== false).length} horario(s) · ${escHtml(settings.cron_timezone || 'America/Hermosillo')}` : 'Desactivado'}${settings.scheduler?.active_jobs != null ? ` · ${settings.scheduler.active_jobs} job(s) en memoria` : ''}</span></div>
     <div class="cfg-current-item cfg-wide"><label>Última actualización</label><span class="cfg-current-value">${escHtml(updated)}</span></div>
   `;
 }
@@ -661,6 +671,7 @@ function fillAgentSettingsForm(settings) {
   );
   renderExcludedLabelChips(settings.excluded_chatwoot_labels || []);
   renderCurrentConfigSummary(settings);
+  fillCronSettingsForm(settings);
   const meta = document.getElementById('cfg-meta');
   if (meta) {
     meta.textContent = settings.updated_at
@@ -687,8 +698,157 @@ function collectAgentSettingsFromForm() {
       .split(',')
       .map(s => s.trim())
       .filter(Boolean),
-    playbook_version: (document.getElementById('cfg-playbook-version')?.value || 'v2').trim()
+    playbook_version: (document.getElementById('cfg-playbook-version')?.value || 'v2').trim(),
+    cron_enabled: Boolean(document.getElementById('cfg-cron-enabled')?.checked),
+    cron_timezone: (document.getElementById('cfg-cron-timezone')?.value || 'America/Hermosillo').trim(),
+    cron_sync_followup: Boolean(document.getElementById('cfg-cron-sync-followup')?.checked),
+    cron_schedules: collectCronSchedulesFromForm()
   };
+}
+
+function cronBranchNameForInbox(inboxId, explicit) {
+  const id = String(inboxId || '').trim();
+  if (explicit && String(explicit).trim()) return String(explicit).trim();
+  return BRANCH_NAME_BY_ID[id] || `Inbox ${id}`;
+}
+
+function normalizeCronTimeValue(time) {
+  const raw = String(time || '').trim();
+  if (!raw) return '22:00';
+  const match = raw.match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return '22:00';
+  return `${String(parseInt(match[1], 10)).padStart(2, '0')}:${match[2]}`;
+}
+
+function renderCronScheduleRows(schedules) {
+  const tbody = document.getElementById('cfg-cron-schedules-body');
+  if (!tbody) return;
+  const list = Array.isArray(schedules) && schedules.length ? schedules : [
+    { inbox_id: '51', branch_name: 'cenontime', time: '22:00', enabled: true }
+  ];
+  agentCronState.schedules = list.map(s => ({ ...s }));
+
+  tbody.innerHTML = list
+    .map((row, index) => {
+      const inboxOptions = CRON_INBOX_OPTIONS.map(
+        opt =>
+          `<option value="${escAttr(opt.id)}"${String(row.inbox_id) === opt.id ? ' selected' : ''}>${escHtml(opt.id)} · ${escHtml(opt.name)}</option>`
+      ).join('');
+      const branch = cronBranchNameForInbox(row.inbox_id, row.branch_name);
+      const timeVal = normalizeCronTimeValue(row.time);
+      const enabled = row.enabled !== false;
+      return `
+        <tr data-cron-index="${index}">
+          <td>
+            <select class="sort-select cron-inbox-select" data-index="${index}" onchange="onCronInboxChange(${index})">
+              ${inboxOptions}
+            </select>
+          </td>
+          <td><input type="text" class="search-input cron-branch-input" data-index="${index}" value="${escAttr(branch)}" placeholder="Nombre sucursal"></td>
+          <td><input type="time" class="search-input cron-time-input" data-index="${index}" value="${escAttr(timeVal)}"></td>
+          <td><input type="checkbox" class="cron-enabled-input" data-index="${index}"${enabled ? ' checked' : ''}></td>
+          <td><button type="button" class="btn btn-secondary btn-sm" onclick="removeCronScheduleRow(${index})">Quitar</button></td>
+        </tr>
+      `;
+    })
+    .join('');
+}
+
+function onCronInboxChange(index) {
+  const select = document.querySelector(`.cron-inbox-select[data-index="${index}"]`);
+  const branchInput = document.querySelector(`.cron-branch-input[data-index="${index}"]`);
+  if (select && branchInput) {
+    branchInput.value = cronBranchNameForInbox(select.value);
+  }
+}
+
+function addCronScheduleRow() {
+  const current = collectCronSchedulesFromForm();
+  current.push({ inbox_id: '49', branch_name: 'HmoOntime', time: '22:30', enabled: true });
+  renderCronScheduleRows(current);
+}
+
+function removeCronScheduleRow(index) {
+  const current = collectCronSchedulesFromForm();
+  current.splice(index, 1);
+  renderCronScheduleRows(current.length ? current : [{ inbox_id: '51', branch_name: 'cenontime', time: '22:00', enabled: true }]);
+}
+
+function collectCronSchedulesFromForm() {
+  const rows = document.querySelectorAll('#cfg-cron-schedules-body tr[data-cron-index]');
+  const out = [];
+  rows.forEach(tr => {
+    const index = tr.getAttribute('data-cron-index');
+    const inboxId = tr.querySelector(`.cron-inbox-select[data-index="${index}"]`)?.value?.trim();
+    const branchName = tr.querySelector(`.cron-branch-input[data-index="${index}"]`)?.value?.trim();
+    const time = tr.querySelector(`.cron-time-input[data-index="${index}"]`)?.value?.trim();
+    const enabled = tr.querySelector(`.cron-enabled-input[data-index="${index}"]`)?.checked;
+    if (!inboxId || !time) return;
+    out.push({
+      inbox_id: inboxId,
+      branch_name: branchName || cronBranchNameForInbox(inboxId),
+      time: normalizeCronTimeValue(time),
+      enabled: Boolean(enabled)
+    });
+  });
+  return out;
+}
+
+function renderCronSchedulerStatus(scheduler) {
+  const el = document.getElementById('cfg-cron-status');
+  if (!el || !scheduler) return;
+  const lines = [];
+  lines.push(
+    scheduler.enabled
+      ? `Estado: activo · ${scheduler.active_jobs} tarea(s) programada(s) · TZ ${scheduler.timezone}`
+      : 'Estado: desactivado (activa el checkbox y guarda)'
+  );
+  if (scheduler.last_runs?.length) {
+    const last = scheduler.last_runs[0];
+    lines.push(
+      `Última ejecución: inbox ${last.inbox_id} · ${last.status} · ${last.analyzed ?? '—'} analizadas · ${new Date(last.at).toLocaleString('es-MX')}`
+    );
+  }
+  el.innerHTML = lines.map(l => `<div>${escHtml(l)}</div>`).join('');
+}
+
+function fillCronSettingsForm(settings) {
+  if (!settings) return;
+  const enabled = document.getElementById('cfg-cron-enabled');
+  if (enabled) enabled.checked = Boolean(settings.cron_enabled);
+  setVal('cfg-cron-timezone', settings.cron_timezone || 'America/Hermosillo');
+  const sync = document.getElementById('cfg-cron-sync-followup');
+  if (sync) sync.checked = settings.cron_sync_followup !== false;
+  renderCronScheduleRows(settings.cron_schedules || []);
+  renderCronSchedulerStatus(settings.scheduler);
+}
+
+async function runScheduledAnalyzeNow() {
+  const status = document.getElementById('cfg-cron-status');
+  if (!confirm('¿Ejecutar ahora el análisis programado para todas las sucursales activas? Puede tardar varios minutos.')) {
+    return;
+  }
+  try {
+    if (status) status.textContent = 'Ejecutando análisis programado…';
+    const data = await supervisorApi('/api/supervisor/scheduler/run', {
+      method: 'POST',
+      body: JSON.stringify({})
+    });
+    const summary = (data.runs || [])
+      .map(r => `inbox ${r.inbox_id}: ${r.status} (${r.analyzed ?? 0} analizadas)`)
+      .join(' · ');
+    if (status) status.textContent = `Completado: ${summary || 'sin resultados'}`;
+    const settingsData = await supervisorApi('/api/supervisor/settings');
+    renderCronSchedulerStatus(settingsData.settings?.scheduler);
+  } catch (err) {
+    if (status) status.textContent = 'Error: ' + err.message;
+    showError('Scheduler: ' + err.message);
+  }
+}
+
+function setVal(id, val) {
+  const el = document.getElementById(id);
+  if (el) el.value = val ?? '';
 }
 
 async function loadAgentSettingsBackups() {

@@ -5,7 +5,7 @@
   "main": "proxy-server.js",
   "scripts": {
     "start": "node proxy-server.js",
-    "check": "node --check proxy-server.js && node --check utils/logger.js && node --check services/chatwoot.service.js && node --check services/chatwoot-labels.service.js && node --check services/supabase.service.js && node --check services/openai.service.js && node --check services/supervisor.service.js && node --check supervisor/settings.service.js && node --check supervisor/playbook.js && node --check supervisor/analysis-normalize.js && node --check supervisor/constants.js && node --check agent/analyze-config.js && node --check agent/tools.registry.js && node --check agent/legacy-analyze.js && node --check agent/process-conversation.js && node --check agent/supervisor-agent.js && node --check auth.js && node --check app.js"
+    "check": "node --check proxy-server.js && node --check utils/logger.js && node --check services/chatwoot.service.js && node --check services/chatwoot-labels.service.js && node --check services/supabase.service.js && node --check services/openai.service.js && node --check services/analyze-run.service.js && node --check services/supervisor.service.js && node --check supervisor/settings.service.js && node --check supervisor/cron-config.js && node --check supervisor/scheduler.service.js && node --check supervisor/playbook.js && node --check supervisor/analysis-normalize.js && node --check supervisor/constants.js && node --check agent/analyze-config.js && node --check agent/tools.registry.js && node --check agent/legacy-analyze.js && node --check agent/process-conversation.js && node --check agent/supervisor-agent.js && node --check auth.js && node --check app.js"
   },
   "keywords": [],
   "author": "",
@@ -14,6 +14,7 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.106.2",
     "dotenv": "^17.4.2",
+    "node-cron": "^3.0.3",
     "openai": "^6.39.0"
   }
 }

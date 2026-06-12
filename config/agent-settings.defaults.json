@@ -41,5 +41,13 @@
     "indeseable",
     "pagofinal",
     "test"
+  ],
+  "cron_enabled": false,
+  "cron_timezone": "America/Hermosillo",
+  "cron_sync_followup": true,
+  "cron_schedules": [
+    { "inbox_id": "51", "branch_name": "cenontime", "time": "22:00", "enabled": true },
+    { "inbox_id": "49", "branch_name": "HmoOntime", "time": "22:30", "enabled": true },
+    { "inbox_id": "48", "branch_name": "nogontime", "time": "23:00", "enabled": true }
   ]
 }

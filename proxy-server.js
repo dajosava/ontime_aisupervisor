@@ -30,6 +30,7 @@ const {
   fetchSnapshotsByDate
 } = require('./services/supabase.service');
 const { isConfigured: openaiConfigured } = require('./services/openai.service');
+const { runSupervisorAnalyzeBatch } = require('./services/analyze-run.service');
 const { processConversationForAnalysis } = require('./agent/process-conversation');
 const {
   isAgentAnalyzeMode,
@@ -44,6 +45,12 @@ const {
   listSettingsBackups,
   restoreSettingsBackup
 } = require('./supervisor/settings.service');
+const {
+  startScheduler,
+  getSchedulerStatus,
+  runSchedulerNow,
+  schedulerSecretValid
+} = require('./supervisor/scheduler.service');
 const {
   getSupervisorConfig,
   INACTIVITY_TAG,
@@ -162,6 +169,11 @@ async function requireSupabaseAuth(req, res) {
   return true;
 }
 
+async function requireSupabaseAuthOrSchedulerSecret(req, res) {
+  if (schedulerSecretValid(req)) return true;
+  return requireSupabaseAuth(req, res);
+}
+
 async function handleAuthApi(req, res, pathname) {
   setCorsHeaders(res);
 
@@ -251,8 +263,30 @@ async function handleSupervisorApi(req, res, pathname) {
       supervisor_agent_mode: isAgentAnalyzeMode(),
       supervisor_legacy_mode: isLegacyAnalyzeMode(),
       playbook_version: getPlaybookVersion(),
-      agent_max_rounds: getMaxAgentRounds()
+      agent_max_rounds: getMaxAgentRounds(),
+      scheduler: getSchedulerStatus()
     });
+    return;
+  }
+
+  if (pathname === '/api/supervisor/scheduler/status' && req.method === 'GET') {
+    sendJson(res, 200, { scheduler: getSchedulerStatus() });
+    return;
+  }
+
+  if (pathname === '/api/supervisor/scheduler/run' && req.method === 'POST') {
+    if (!(await requireSupabaseAuthOrSchedulerSecret(req, res))) return;
+    const body = await readJsonBody(req);
+    const inboxId = body.inboxId || body.inbox_id || '';
+    try {
+      const result = await runSchedulerNow({
+        inboxId: inboxId || undefined,
+        trigger: schedulerSecretValid(req) ? 'scheduler_secret' : 'manual_ui'
+      });
+      sendJson(res, 200, { ok: true, ...result });
+    } catch (err) {
+      sendJson(res, 400, { error: err.message });
+    }
     return;
   }
 
@@ -517,163 +551,31 @@ async function handleSupervisorApi(req, res, pathname) {
     const token = chatwootTokenFrom(req, body);
     const includeFullDebug = body.debug !== false;
 
-    const log = createSupervisorRunLogger({
-      inbox_id: inboxId,
-      branch_name: branchName,
-      account_id: accountId,
-      window_hours: windowHours
-    });
-
     try {
-      if (!accountId) throw new Error('Falta accountId o CHATWOOT_ACCOUNT_ID.');
-      if (!token) throw new Error('Falta token de Chatwoot: usa CHATWOOT_API_TOKEN en .env o envíalo en la petición.');
-      if (!openaiConfigured()) throw new Error('Falta OPENAI_API_KEY en .env.');
-
-      log.stepStart('chatwoot_list_conversations', { inbox_id: inboxId, window_hours: windowHours });
-      const activityFetch = await fetchConversationsWithRecentActivity({
+      const result = await runSupervisorAnalyzeBatch({
         baseUrl,
         accountId,
         inboxId,
+        branchName,
         token,
         windowHours,
-        logger: log
-      });
-      const conversationsFetched = activityFetch.conversations;
-      const sinceUnix = activityFetch.sinceUnix;
-      log.stepEnd('chatwoot_list_conversations', {
-        conversations_with_activity: conversationsFetched.length,
-        pages_scanned: activityFetch.pages_scanned,
-        since_unix: sinceUnix
+        trigger: 'api'
       });
 
-      const labelPartition = partitionConversationsByExcludedLabels(conversationsFetched);
-      const conversations = labelPartition.eligible;
-      const skippedByLabel = labelPartition.skipped;
-
-      log.stepEnd('chatwoot_filter_excluded_labels', {
-        fetched: conversationsFetched.length,
-        eligible: conversations.length,
-        skipped: skippedByLabel.length,
-        excluded_label_catalog: getExcludedChatwootLabels().length
-      });
-
-      const rows = [];
-      const snapshotRows = [];
-      const errors = [];
-      const snapshotDate = calendarDateInTimezone();
-      const total = conversations.length;
-
-      log.setSummary({
-        conversations_fetched: conversationsFetched.length,
-        conversations_total: total,
-        skipped_excluded_labels: skippedByLabel.length
-      });
-
-      for (let index = 0; index < conversations.length; index++) {
-        const conversation = conversations[index];
-        const convLabel = `conv_${conversation.id}`;
-        log.info('conversation_loop', {
-          index: index + 1,
-          total,
-          conversation_id: conversation.id,
-          contact: conversation.meta?.sender?.name || null
-        });
-
-        try {
-          const result = await processConversationForAnalysis({
-            conversation,
-            baseUrl,
-            accountId,
-            branchName,
-            inboxId,
-            token,
-            sinceUnix,
-            windowHours,
-            snapshotDate,
-            logger: log,
-            convLabel
-          });
-
-          if (result.skipped) continue;
-
-          rows.push(result.reportRow);
-          snapshotRows.push(result.snapshotRow);
-          log.info(`${convLabel}_analyzed_ok`, {
-            stage: result.reportRow.stage,
-            risk: result.reportRow.risk_level,
-            analysis_mode: result.analysis_mode,
-            agent_rounds: result.agent_meta?.rounds ?? null,
-            fallback_used: result.agent_meta?.fallback_used ?? false
-          });
-        } catch (err) {
-          log.error(`${convLabel}_failed`, { error: err.message });
-          errors.push({ conversation_id: conversation.id, error: err.message });
-        }
-      }
-
-      log.stepStart('supabase_store_reports');
-      const storeResult = rows.length ? await storeReports(rows) : { stored: false, count: 0 };
-      log.stepEnd('supabase_store_reports', storeResult);
-
-      log.stepStart('supabase_store_snapshots');
-      const snapshotResult = snapshotRows.length && supabaseConfigured()
-        ? await storeSnapshots(snapshotRows)
-        : { stored: false, count: 0 };
-      log.stepEnd('supabase_store_snapshots', snapshotResult);
-
-      const taggedInactive = rows.filter(row =>
-        LEGACY_INACTIVITY_TAGS.some(tag => (row.metrics?.supervisor_tags || []).includes(tag))
-      ).length;
-
-      log.finish('completed', {
-        analyzed: rows.length,
-        fetched: conversationsFetched.length,
-        eligible_after_label_filter: conversations.length,
-        skipped_excluded_labels: skippedByLabel.length,
-        errors_count: errors.length,
-        tagged_inactive_interest: taggedInactive
-      });
-
-      const debugPayload = log.toJSON();
       sendJson(res, 200, {
-        run_id: log.runId,
-        analyzed: rows.length,
-        fetched: conversationsFetched.length,
-        eligible_after_label_filter: conversations.length,
-        skipped_excluded_labels: skippedByLabel.length,
-        skipped_conversations: skippedByLabel.slice(0, 100),
-        activity_window_hours: windowHours,
-        pages_scanned: activityFetch.pages_scanned,
-        fetch_strategy: isLegacyAnalyzeMode()
-          ? 'legacy_single_prompt'
-          : `agente_herramientas_playbook_${getPlaybookVersion()}`,
-        supervisor_agent_mode: isAgentAnalyzeMode(),
-        supervisor_legacy_mode: isLegacyAnalyzeMode(),
-        playbook_version: getPlaybookVersion(),
-        agent_max_rounds: getMaxAgentRounds(),
-        tagged_inactive_interest: taggedInactive,
-        inactive_days_threshold: getSupervisorConfig().INACTIVE_DAYS_THRESHOLD,
-        stored: storeResult.stored,
-        store_count: storeResult.count,
-        snapshots_stored: snapshotResult.stored,
-        snapshot_count: snapshotResult.count,
-        snapshot_date: snapshotDate,
-        errors,
-        reports: rows,
+        ...result,
         debug: includeFullDebug
-          ? debugPayload
+          ? result.debug
           : {
-            run_id: debugPayload.run_id,
-            status: debugPayload.status,
-            duration_ms: debugPayload.duration_ms,
-            summary: debugPayload.summary,
-            current_step: debugPayload.current_step,
-            last_events: debugPayload.events.slice(-15)
+            run_id: result.debug?.run_id,
+            status: result.debug?.status,
+            duration_ms: result.debug?.duration_ms,
+            summary: result.debug?.summary,
+            current_step: result.debug?.current_step,
+            last_events: (result.debug?.events || []).slice(-15)
           }
       });
     } catch (err) {
-      log.error('analyze_run_failed', { error: err.message });
-      log.finish('failed', { error: err.message });
       throw err;
     }
     return;
@@ -871,5 +773,10 @@ server.listen(PORT, HOST, () => {
     console.warn('  Auth:  ACTIVA pero falta SUPABASE_ANON_KEY — el login no funcionará hasta configurarla.');
   } else {
     console.log(`  Auth:  ${AUTH_REQUIRED ? 'requerida (Supabase JWT)' : 'desactivada (AUTH_REQUIRED=false)'}`);
+  }
+  try {
+    startScheduler();
+  } catch (err) {
+    console.warn('[scheduler] Error al iniciar:', err.message);
   }
 });
