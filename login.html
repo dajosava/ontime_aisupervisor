@@ -4,20 +4,22 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Iniciar sesión · Ontime AI Supervisor</title>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg: #0a0a0f;
-      --surface: #12121a;
-      --border: #1e1e2e;
-      --accent: #7c6af7;
-      --accent2: #f76a8c;
-      --text: #e8e8f0;
-      --muted: #5a5a7a;
-      --danger: #f87171;
-      --success: #4ade80;
+      --bg: #eef1f6;
+      --surface: #ffffff;
+      --border: #e2e8f0;
+      --accent: #1d4ed8;
+      --accent-hover: #1e40af;
+      --text: #0a0a0a;
+      --muted: #171717;
+      --placeholder: #737373;
+      --danger: #dc2626;
+      --success: #059669;
       --mono: 'IBM Plex Mono', monospace;
-      --sans: 'Syne', sans-serif;
+      --sans: 'Inter', system-ui, -apple-system, sans-serif;
+      --shadow-md: 0 4px 24px rgba(15, 23, 42, 0.08);
     }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -35,8 +37,8 @@
       position: fixed;
       inset: 0;
       background-image:
-        linear-gradient(rgba(124,106,247,0.04) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(124,106,247,0.04) 1px, transparent 1px);
+        linear-gradient(rgba(148, 163, 184, 0.12) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(148, 163, 184, 0.12) 1px, transparent 1px);
       background-size: 40px 40px;
       pointer-events: none;
     }
@@ -48,7 +50,7 @@
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: 16px;
-      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+      box-shadow: var(--shadow-md);
     }
     .login-logo {
       width: 56px;
@@ -56,18 +58,20 @@
       border-radius: 14px;
       overflow: hidden;
       margin-bottom: 20px;
-      background: rgba(10, 10, 15, 0.6);
+      background: var(--surface);
+      border: 1px solid var(--border);
     }
     .login-logo img { width: 100%; height: 100%; object-fit: contain; }
     h1 {
       font-size: 1.5rem;
-      font-weight: 800;
+      font-weight: 700;
       margin-bottom: 6px;
       letter-spacing: -0.02em;
+      color: var(--text);
     }
     .login-sub {
       font-size: 13px;
-      color: var(--muted);
+      color: var(--text);
       margin-bottom: 28px;
       line-height: 1.5;
     }
@@ -76,7 +80,8 @@
       font-size: 11px;
       text-transform: uppercase;
       letter-spacing: 0.08em;
-      color: var(--muted);
+      color: var(--text);
+      font-weight: 600;
       margin-bottom: 6px;
     }
     input {
@@ -85,31 +90,32 @@
       margin-bottom: 16px;
       border-radius: 10px;
       border: 1px solid var(--border);
-      background: rgba(0, 0, 0, 0.35);
+      background: #ffffff;
       color: var(--text);
       font-family: var(--mono);
       font-size: 14px;
     }
+    input::placeholder { color: var(--placeholder); }
     input:focus {
       outline: none;
       border-color: var(--accent);
-      box-shadow: 0 0 0 3px rgba(124, 106, 247, 0.2);
+      box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.12);
     }
     .btn-primary {
       width: 100%;
       padding: 13px;
-      border: 2px solid #ffffff;
+      border: none;
       border-radius: 10px;
       font-family: var(--sans);
-      font-weight: 700;
+      font-weight: 600;
       font-size: 14px;
       cursor: pointer;
-      background: #0a0a0f;
+      background: var(--accent);
       color: #ffffff;
       margin-top: 4px;
     }
     .btn-primary:hover:not(:disabled) {
-      background: #1a1a24;
+      background: var(--accent-hover);
     }
     .btn-primary:disabled {
       opacity: 0.55;
@@ -120,7 +126,8 @@
       margin-bottom: 16px;
       padding: 10px 12px;
       border-radius: 8px;
-      background: rgba(248, 113, 113, 0.12);
+      background: rgba(220, 38, 38, 0.08);
+      border: 1px solid rgba(220, 38, 38, 0.2);
       color: var(--danger);
       font-size: 13px;
       line-height: 1.4;
@@ -135,7 +142,7 @@
     }
     .login-loading {
       text-align: center;
-      color: var(--muted);
+      color: var(--text);
       font-size: 14px;
     }
   </style>
@@ -157,7 +164,7 @@
         <input id="login-password" name="password" type="password" required autocomplete="current-password" placeholder="••••••••">
         <button type="submit" class="btn-primary" id="login-submit">Entrar</button>
       </form>
-        </div>
+    </div>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>

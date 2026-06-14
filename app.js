@@ -995,10 +995,34 @@ function buildReportsQuery() {
   return params.toString();
 }
 
-function filterReportsBySearch(reports) {
+function reportEvaluationScope(report) {
+  const raw = report?.raw_analysis;
+  if (!raw) return null;
+  if (typeof raw === 'object') return raw.evaluation_scope || null;
+  try {
+    return JSON.parse(raw).evaluation_scope || null;
+  } catch {
+    return null;
+  }
+}
+
+function isReportFueraDeAlcance(report) {
+  return normalizeStageKey(report?.stage) === 'fuera_de_alcance'
+    || reportEvaluationScope(report) === 'fuera_de_alcance';
+}
+
+function isReportsHideFueraAlcanceEnabled() {
+  return Boolean(document.getElementById('reports-hide-fuera-alcance')?.checked);
+}
+
+function filterReportsForView(reports) {
+  let list = reports;
+  if (isReportsHideFueraAlcanceEnabled()) {
+    list = list.filter(report => !isReportFueraDeAlcance(report));
+  }
   const q = (document.getElementById('reports-search')?.value || '').trim().toLowerCase();
-  if (!q) return reports;
-  return reports.filter(report => {
+  if (!q) return list;
+  return list.filter(report => {
     const haystack = [
       report.contact_name,
       report.contact_phone,
@@ -1014,6 +1038,10 @@ function filterReportsBySearch(reports) {
       .toLowerCase();
     return haystack.includes(q);
   });
+}
+
+function filterReportsBySearch(reports) {
+  return filterReportsForView(reports);
 }
 
 function branchInfoForReport(report) {
@@ -1066,17 +1094,118 @@ function renderReportsSummary(reports, grouped) {
     `<span class="reports-chip">${reports.length} reporte(s)</span>`,
     `<span class="reports-chip">${grouped.length} sucursal(es)</span>`
   ];
+  if (isReportsHideFueraAlcanceEnabled()) {
+    chips.push('<span class="reports-chip">Sin fuera de alcance</span>');
+  }
   for (const risk of RISK_ORDER) {
     if (byRisk[risk]) chips.push(`<span class="reports-chip">${risk}: ${byRisk[risk]}</span>`);
   }
   el.innerHTML = chips.join('');
 }
 
-function renderReportCard(report) {
+function reportFact(label, valueHtml) {
+  if (valueHtml == null || valueHtml === '' || valueHtml === '—') return '';
+  return `<div class="report-fact"><span class="report-fact-label">${escHtml(label)}</span><span class="report-fact-value">${valueHtml}</span></div>`;
+}
+
+function reportFactsBlock(items) {
+  const html = items.filter(Boolean).join('');
+  if (!html) return '';
+  return `<div class="report-row-facts">${html}</div>`;
+}
+
+function reportTextBlock(label, text) {
+  if (!text) return '';
+  const safe = escHtml(text);
+  if (label) {
+    return `<p class="report-row-text"><strong>${escHtml(label)}:</strong> ${safe}</p>`;
+  }
+  return `<p class="report-row-text">${safe}</p>`;
+}
+
+function salesProcessSectionReport(report) {
+  const { cotizacionEnviada, urlConfirmed, sp, qd } = cotizacionEnviadaFromReport(report);
+
+  if (!sp && !qd) return '';
+
+  const detectionBadge = urlConfirmed
+    ? `<span class="badge followup-status-ok">Confirmado por URL</span>`
+    : (cotizacionEnviada
+      ? `<span class="badge followup-status-warn">Solo inferencia AI</span>`
+      : `<span class="badge followup-status-muted">Sin URL oficial</span>`);
+
+  const cotizacion = cotizacionEnviada
+    ? `Sí · ${escHtml(qd?.cotizacion_domain || sp?.cotizacion_url_domain || '')} ${detectionBadge}`
+    : `No detectada ${detectionBadge}`;
+  const espera = sp?.esperando_respuesta_cliente ? 'Sí' : 'No';
+  const newMsgs = report.metrics?.new_messages_at_analysis;
+  const sentAt = qd?.cotizacion_sent_at
+    ? formatFollowupTimestamp(qd.cotizacion_sent_at)
+    : (sp?.cotizacion_sent_at ? formatFollowupTimestamp(sp.cotizacion_sent_at) : '—');
+  const regionNote = qd && !qd.matches_branch_expected && qd.expected_region
+    ? ` · Región enlace: ${escHtml(qd.cotizacion_region)} (esperada: ${escHtml(qd.expected_region)})`
+    : '';
+
+  const facts = reportFactsBlock([
+    reportFact('Embudo', escHtml(sp?.funnel_stage || '—')),
+    reportFact('Cotización enviada', cotizacion),
+    reportFact('Enviada (URL)', `${escHtml(sentAt)} · Por: ${escHtml(qd?.cotizacion_sent_by || '—')}${regionNote}`),
+    reportFact('Esperando al cliente', escHtml(espera)),
+    reportFact('Seguimiento comercial', escHtml(sp?.seguimiento_comercial || '—')),
+    newMsgs != null ? reportFact('Mensajes nuevos', escHtml(String(newMsgs))) : ''
+  ]);
+
+  const narratives = [
+    sp?.atencion_resumen
+      ? reportTextBlock(`Atención (${sp.atencion_calidad || '—'})`, sp.atencion_resumen)
+      : '',
+    sp?.proceso_venta_resumen || qd?.cotizacion_evidence
+      ? reportTextBlock('Detalle del proceso', sp?.proceso_venta_resumen || qd?.cotizacion_evidence)
+      : '',
+    sp?.cambios_desde_ultimo_analisis
+      ? reportTextBlock('Cambios desde último análisis', sp.cambios_desde_ultimo_analisis)
+      : '',
+    reportTextBlock('Próximo paso', sp?.proximo_paso_comercial || sp?.seguimiento_resumen || '')
+  ].filter(Boolean).join('');
+
+  return `
+    <div class="supervisor-card-section sales-process-section report-row-block">
+      <h5 class="report-row-block-title">Proceso de venta</h5>
+      ${facts}
+      ${narratives}
+    </div>
+  `;
+}
+
+function participantSectionReport(title, present, score, summary, issues, recommendation, meta = '') {
+  if (!present && !summary && !asList(issues).length && !recommendation) return '';
+  const scoreText = score == null ? '—' : String(score);
+  const issuesList = asList(issues);
+  const facts = reportFactsBlock([
+    reportFact('Intervención', present ? 'Intervino' : 'Sin intervención'),
+    reportFact('Score', escHtml(scoreText)),
+    meta ? reportFact('Detalle', escHtml(meta)) : ''
+  ]);
+  const narratives = [
+    summary ? reportTextBlock('Resumen', summary) : '',
+    issuesList.length ? reportTextBlock(`Observaciones ${title}`, issuesList.join(' · ')) : '',
+    recommendation ? reportTextBlock(`Recomendación ${title}`, recommendation) : ''
+  ].filter(Boolean).join('');
+
+  return `
+    <div class="supervisor-card-section report-row-block">
+      <h5 class="report-row-block-title">${escHtml(title)}</h5>
+      ${facts}
+      ${narratives}
+    </div>
+  `;
+}
+
+function renderReportRow(report) {
   const title = report.contact_name || `Conversación ${report.conversation_id}`;
   const score = formatReportScore(report);
   const architectNames = asList(report.architect_names).join(', ') || 'sin nombre identificado';
-  const aiAgentBlock = participantSection(
+  const aiAgentBlock = participantSectionReport(
     'AI Agent',
     report.ai_agent_present,
     report.ai_agent_score,
@@ -1085,7 +1214,7 @@ function renderReportCard(report) {
     report.ai_agent_recommendation,
     `Mensajes salientes AI: ${report.ai_agent_outbound_count || 0}`
   );
-  const architectBlock = participantSection(
+  const architectBlock = participantSectionReport(
     'Arquitecto',
     report.architect_present,
     report.architect_score,
@@ -1101,34 +1230,51 @@ function renderReportCard(report) {
     ? new Date(report.analyzed_at).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' })
     : '—';
 
-  return `
-    <div class="supervisor-card">
-      <div class="supervisor-card-head">
-        <div>
-          <div class="supervisor-card-title">${escHtml(title)}</div>
-          <div class="supervisor-card-meta">${escHtml(analyzed)} · Score ${escHtml(score)}</div>
+  const detailBlocks = [
+    salesProcessSectionReport(report),
+    aiAgentBlock,
+    architectBlock,
+    `<div class="report-row-recommendation"><strong>Recomendación:</strong> ${escHtml(report.recommendation || '—')}</div>`,
+    `<div class="report-row-actions">
+      <button type="button" class="btn btn-secondary btn-sm btn-report-reanalyze" data-conversation-id="${escAttr(String(report.conversation_id))}" onclick="reanalyzeReportFullHistory(${Number(report.conversation_id)})" title="Trae todos los mensajes de Chatwoot y actualiza este reporte">
+        Reanalizar historial completo
+      </button>
+      ${url}
+    </div>`
+  ].join('');
+
+  const detailsHtml = detailBlocks.trim()
+    ? `<details class="report-row-details">
+        <summary class="report-row-summary-toggle">
+          <span class="report-row-toggle-closed">Ver análisis completo</span>
+          <span class="report-row-toggle-open">Ocultar detalle</span>
+        </summary>
+        <div class="report-row-details-inner">
+          ${detailBlocks}
         </div>
-        <div class="supervisor-card-badges">
+      </details>`
+    : '';
+
+  return `
+    <article class="report-row">
+      <header class="report-row-header">
+        <div>
+          <h4 class="report-row-title">${escHtml(title)}</h4>
+          <div class="report-row-meta">${escHtml(analyzed)} · Score ${escHtml(score)} · Conv. ${escHtml(String(report.conversation_id))}</div>
+        </div>
+        <div class="report-row-badges">
           ${stageBadge(report.stage)}
+          ${cotizacionEnviadaBadge(report)}
           ${inactiveInterestBadge(report)}
           ${riskBadge(report.risk_level)}
         </div>
-      </div>
-      <div class="supervisor-card-body">
-        <div>${escHtml(report.summary || 'Sin resumen.')}</div>
+      </header>
+      <div class="report-row-body">
+        <p class="report-row-lead">${escHtml(report.summary || 'Sin resumen.')}</p>
         ${formatAlertsBlock(report)}
-        ${salesProcessSection(report)}
-        ${aiAgentBlock}
-        ${architectBlock}
-        <div><strong>Recomendación:</strong> ${escHtml(report.recommendation || '—')}</div>
-        <div class="report-card-actions">
-          <button type="button" class="btn btn-secondary btn-sm btn-report-reanalyze" data-conversation-id="${escAttr(String(report.conversation_id))}" onclick="reanalyzeReportFullHistory(${Number(report.conversation_id)})" title="Trae todos los mensajes de Chatwoot y actualiza este reporte">
-            Reanalizar historial completo
-          </button>
-          ${url}
-        </div>
+        ${detailsHtml}
       </div>
-    </div>
+    </article>
   `;
 }
 
@@ -1146,10 +1292,14 @@ function renderReportsTab(reports) {
       ? `${BRANCH_NAME_BY_ID[branchId] || 'Sucursal'} (${branchId})`
       : 'todas las sucursales';
     const riskLabel = risk ? `riesgo ${risk}` : 'todos los niveles de riesgo';
+    const hideFuera = isReportsHideFueraAlcanceEnabled();
+    const fueraNote = hideFuera
+      ? '<br>Los reportes <strong>fuera de alcance</strong> están ocultos. Desmarca el filtro para verlos.'
+      : '';
     content.innerHTML = `
       <div class="reports-empty">
         No hay reportes para <strong>${escHtml(branchLabel)}</strong> con <strong>${escHtml(riskLabel)}</strong>.
-        <br>Ejecuta un análisis en la pestaña Supervisor AI o amplía la cantidad cargada.
+        <br>Ejecuta un análisis en la pestaña Supervisor AI o amplía la cantidad cargada.${fueraNote}
       </div>
     `;
     return;
@@ -1168,8 +1318,8 @@ function renderReportsTab(reports) {
             ${riskBadge(section.risk)}
             <span class="reports-branch-count">${section.reports.length}</span>
           </div>
-          <div class="reports-grid">
-            ${section.reports.map(r => renderReportCard(r)).join('')}
+          <div class="reports-list">
+            ${section.reports.map(r => renderReportRow(r)).join('')}
           </div>
         </div>
       `).join('')}
@@ -1527,6 +1677,29 @@ function asList(value) {
   return Array.isArray(value) ? value.filter(Boolean) : [];
 }
 
+function cotizacionEnviadaFromReport(report) {
+  const sp = salesProcessFromReport(report);
+  const qd = quoteDetectionFromReport(report);
+  const urlConfirmed = Boolean(
+    qd?.cotizacion_enviada || sp?.cotizacion_detection_source === 'url_pattern'
+  );
+  const cotizacionEnviada = urlConfirmed || Boolean(sp?.cotizacion_enviada);
+  return { cotizacionEnviada, urlConfirmed, sp, qd };
+}
+
+function cotizacionEnviadaBadge(report) {
+  const { cotizacionEnviada, urlConfirmed, sp, qd } = cotizacionEnviadaFromReport(report);
+  if (!cotizacionEnviada) return '';
+  const domain = qd?.cotizacion_domain || sp?.cotizacion_url_domain || '';
+  const domainNote = domain ? ` (${domain})` : '';
+  const title = urlConfirmed
+    ? `Cotización enviada${domainNote} · confirmada por URL oficial`
+    : `Cotización enviada · detectada por inferencia del AI (sin URL oficial)`;
+  const cls = urlConfirmed ? 'badge badge-cotizacion' : 'badge badge-cotizacion-inferida';
+  const label = urlConfirmed ? 'Cotización enviada' : 'Cotización enviada · AI';
+  return `<span class="${cls}" title="${escAttr(title)}">${escHtml(label)}</span>`;
+}
+
 function salesProcessFromReport(report) {
   const raw = report?.raw_analysis;
   if (!raw) return null;
@@ -1541,16 +1714,21 @@ function salesProcessFromReport(report) {
 }
 
 function quoteDetectionFromReport(report) {
-  return report?.metrics?.quote_detection ||
-    report?.raw_analysis?.quote_detection ||
-    null;
+  if (report?.metrics?.quote_detection) return report.metrics.quote_detection;
+  const raw = report?.raw_analysis;
+  if (!raw) return null;
+  if (typeof raw === 'string') {
+    try {
+      return JSON.parse(raw).quote_detection || null;
+    } catch {
+      return null;
+    }
+  }
+  return raw.quote_detection || null;
 }
 
 function salesProcessSection(report) {
-  const sp = salesProcessFromReport(report);
-  const qd = quoteDetectionFromReport(report);
-  const urlConfirmed = qd?.cotizacion_enviada || sp?.cotizacion_detection_source === 'url_pattern';
-  const cotizacionEnviada = urlConfirmed || Boolean(sp?.cotizacion_enviada);
+  const { cotizacionEnviada, urlConfirmed, sp, qd } = cotizacionEnviadaFromReport(report);
 
   if (!sp && !qd) return '';
 
@@ -1729,6 +1907,7 @@ function renderSupervisorReports(reports, summary) {
             </div>
             <div class="supervisor-card-badges">
               ${stageBadge(report.stage)}
+              ${cotizacionEnviadaBadge(report)}
               ${inactiveBadge}
               ${riskBadge(report.risk_level)}
             </div>
@@ -1961,7 +2140,7 @@ function renderPagination() {
   let html = `<button class="page-btn" onclick="goPage(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''}>‹</button>`;
   for (let i = 1; i <= pages; i++) {
     if (pages > 7 && Math.abs(i - currentPage) > 2 && i !== 1 && i !== pages) {
-      if (i === 2 || i === pages - 1) html += '<span style="color:var(--muted);padding:0 4px">…</span>';
+      if (i === 2 || i === pages - 1) html += '<span style="color:var(--text);padding:0 4px">…</span>';
       continue;
     }
     html += `<button class="page-btn${i === currentPage ? ' active' : ''}" onclick="goPage(${i})">${i}</button>`;
