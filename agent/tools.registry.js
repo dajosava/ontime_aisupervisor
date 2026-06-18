@@ -9,7 +9,9 @@ const {
   detectQuoteInMessages,
   extendMetricsWithFollowup,
   mergeQuoteDetectionIntoAnalysis,
-  mergeInactivityTagging
+  mergeInactivityTagging,
+  mergeCompleteProjectPolicyIntoAnalysis,
+  detectCompleteProjectPolicyInMessages
 } = require('../services/supervisor.service');
 const { getSubmitToolDescription } = require('../supervisor/playbook');
 const { normalizeSupervisionAnalysis } = require('../supervisor/analysis-normalize');
@@ -150,6 +152,7 @@ async function toolComputeBusinessFacts(ctx) {
 
   trace(ctx, 'compute_business_facts', {
     cotizacion_enviada: quoteDetection.cotizacion_enviada,
+    complete_project_policy: enrichment.complete_project_policy?.communicated || false,
     analysis_mode: enrichment.analysis_mode,
     new_messages_since_last: enrichment.activity_delta.new_messages_since_last_analysis
   });
@@ -161,6 +164,7 @@ async function toolComputeBusinessFacts(ctx) {
       cotizacion_domain: quoteDetection.cotizacion_domain || null,
       cotizacion_evidence: quoteDetection.cotizacion_evidence || null
     },
+    complete_project_policy: enrichment.complete_project_policy || { communicated: false },
     inactivity: {
       days_since_last_interaction: inactivityTagging.days_since_last_interaction,
       tagged_inactive_with_interest: inactivityTagging.tagged_inactive_with_interest,
@@ -204,6 +208,11 @@ function toolSubmitSupervisionAnalysis(ctx, args) {
   const raw = validateAnalysisShape(args.analysis);
   let analysis = mergeQuoteDetectionIntoAnalysis(raw, ctx.cache.quoteDetection);
   analysis = mergeInactivityTagging(analysis, ctx.cache.inactivityTagging);
+  analysis = mergeCompleteProjectPolicyIntoAnalysis(
+    analysis,
+    ctx.cache.enrichment?.complete_project_policy ||
+      detectCompleteProjectPolicyInMessages(ctx.cache.recentMessages || [])
+  );
   ctx.finalAnalysis = analysis;
   trace(ctx, 'submit_supervision_analysis', {
     stage: analysis.stage,

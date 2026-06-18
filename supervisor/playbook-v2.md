@@ -21,6 +21,7 @@ Documento de referencia humana. La versión ejecutada en código es `supervisor/
 ## Reglas de negocio (código, no negociables)
 
 - **No resumir** la conversación: evaluación comercial con evidencia breve.
+- **Solo proyectos completos**: On Time no hace obra a medias ni remodelaciones parciales. Si el arquitecto comunica *"solo trabajamos en proyectos completos"* (o similar), es **política válida** — no penalizar como mala atención ni incluir en issues del arquitecto por ese motivo; **riesgo = bajo** (no medio/alto) salvo situación grave (legal, Profeco, etc.).
 - **Cotización enviada**: URL oficial `*.ontimecocinas.com` (`compute_business_facts`).
 - **Inactiva con interés**: etiqueta `inactiva_interes_real` si aplica.
 - **Etiquetas Chatwoot excluidas**: conversaciones con etiquetas de la lista configurada **no se analizan** (`services/chatwoot-labels.service.js`).

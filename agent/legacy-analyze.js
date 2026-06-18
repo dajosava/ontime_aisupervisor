@@ -10,7 +10,8 @@ const {
   detectQuoteInMessages,
   extendMetricsWithFollowup,
   mergeQuoteDetectionIntoAnalysis,
-  mergeInactivityTagging
+  mergeInactivityTagging,
+  mergeCompleteProjectPolicyIntoAnalysis
 } = require('../services/supervisor.service');
 const { conversationHasRecentActivity } = require('../services/chatwoot.service');
 
@@ -124,6 +125,7 @@ async function runLegacyAnalyzeForConversation(params) {
   });
   analysis = mergeQuoteDetectionIntoAnalysis(analysis, quoteDetection);
   analysis = mergeInactivityTagging(analysis, inactivityTagging);
+  analysis = mergeCompleteProjectPolicyIntoAnalysis(analysis, enrichment.complete_project_policy);
 
   return {
     recentMessages,

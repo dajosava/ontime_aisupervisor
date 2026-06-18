@@ -30,6 +30,53 @@ const LEGACY_INACTIVITY_TAGS = ['inactiva_25d_interes_real', INACTIVITY_TAG];
 const CUSTOMER_INTEREST_KEYWORDS =
   /\b(cotiz|presupuesto|precio|costo|cocina|diseño|diseno|medidas|plano|visita|agendar|modelo|m2|metro|interesad|quiero|necesito|cuando|donde|instalacion|garantia)\b/i;
 
+const COMPLETE_PROJECT_POLICY_PATTERNS = [
+  /solo\s+(trabajamos|realizamos|hacemos|atiende|atendemos|se\s+realizan)\s+(en\s+)?(proyectos?|trabajos?)\s+completos?/i,
+  /(proyectos?|trabajos?)\s+completos?\s+(desde\s+)?cero/i,
+  /(solo\s+)?se\s+realizan?\s+trabajos?\s+completos?/i,
+  /no\s+trabajamos\s+obra\s+a\s+medias?/i,
+  /no\s+hacemos\s+(remodelaciones?|trabajos?)\s+parcial(es)?/i,
+  /no\s+(hacemos|realizamos)\s+obra\s+a\s+medias?/i,
+  /reemplazo\s+completo/i,
+  /proyecto\s+integral/i,
+  /no\s+(arreglamos|reparamos)\s+(muebles?|partes?)/i
+];
+
+const POLICY_FALSE_PENALTY_ISSUE = [
+  /venta\s+pasiva/i,
+  /mal\s+atendid/i,
+  /rechaz[oó]/i,
+  /no\s+atendi[oó]/i,
+  /obra\s+a\s+medias?/i,
+  /trabajo\s+parcial/i,
+  /remodelaci[oó]n\s+parcial/i,
+  /declin[oó].*cliente/i,
+  /pol[ií]tica.*incorrect/i
+];
+
+const POLICY_FALSE_PENALTY_CASTIGO = [
+  /obra\s+parcial/i,
+  /trabajo\s+parcial/i,
+  /pedido\s+parcial/i,
+  /no\s+atender.*parcial/i,
+  /rechaz[oó]/i,
+  /venta\s+pasiva/i
+];
+
+const POLICY_FALSE_ALERT = [
+  /venta\s+pasiva/i,
+  /falta de seguimiento posterior a la atenci[oó]n inicial/i,
+  /falta de cierre comercial/i,
+  /mal\s+atendid/i,
+  /rechaz[oó]/i,
+  /no\s+atendi[oó]/i,
+  /obra\s+a\s+medias?/i,
+  /trabajo\s+parcial/i
+];
+
+const GRAVE_RISK_KEEP =
+  /profeco|amenaza\s+legal|demanda|redes\s+sociales|violencia|fraude|pag[oó]\s+sin\s+atenci[oó]n|múltiples\s+insistencias\s+sin\s+respuesta/i;
+
 const INBOX_ID_TO_QUOTE_REGION = {
   '48': 'nogales',
   '49': 'hermosillo',
@@ -351,6 +398,171 @@ function buildInactivityTagging(messages, metrics, quoteDetection, storedHistori
     supervisor_tags: tagged ? [INACTIVITY_TAG] : [],
     tagged_inactive_with_interest: tagged
   };
+}
+
+function stripMessageText(text) {
+  return String(text || '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function filterPolicyFalsePenalties(items, patterns) {
+  if (!Array.isArray(items)) return items;
+  return items.filter(item => {
+    const text = String(item || '');
+    return !patterns.some(pattern => pattern.test(text));
+  });
+}
+
+function analysisHasGraveRisk(analysis) {
+  if (String(analysis?.risk_level || '').toLowerCase() === 'grave') {
+    const blob = [
+      analysis.summary,
+      analysis.recommendation,
+      ...(analysis.alerts || []),
+      ...(analysis.castigos_aplicados || [])
+    ].join(' ');
+    return GRAVE_RISK_KEEP.test(blob);
+  }
+  const blob = [
+    analysis.summary,
+    analysis.recommendation,
+    ...(analysis.alerts || []),
+    ...(analysis.castigos_aplicados || [])
+  ].join(' ');
+  return GRAVE_RISK_KEEP.test(blob);
+}
+
+function detectCompleteProjectPolicyInMessages(messages) {
+  const visible = getVisibleMessagesSorted(messages);
+  const hits = [];
+
+  for (const message of visible) {
+    if (message.message_type !== 1) continue;
+    const text = stripMessageText(message.content);
+    if (!text) continue;
+    const matched = COMPLETE_PROJECT_POLICY_PATTERNS.find(pattern => pattern.test(text));
+    if (!matched) continue;
+    const role = participantType(message);
+    hits.push({
+      message_id: message.id,
+      created_at: message.created_at ? new Date(Number(message.created_at) * 1000).toISOString() : null,
+      sender: senderName(message),
+      sender_group: role,
+      by_architect: role === 'arquitecto' || role === 'asesor_no_catalogado',
+      snippet: text.slice(0, 320)
+    });
+  }
+
+  const architectHits = hits.filter(hit => hit.by_architect);
+  const pool = architectHits.length ? architectHits : hits;
+  const primary = pool[0] || null;
+
+  return {
+    communicated: pool.length > 0,
+    by_architect: architectHits.length > 0,
+    hit_count: pool.length,
+    evidence: primary?.snippet || '',
+    sender: primary?.sender || null,
+    sent_at: primary?.created_at || null,
+    hits: pool
+  };
+}
+
+function mergeCompleteProjectPolicyIntoAnalysis(analysis, policyDetection) {
+  if (!policyDetection?.communicated) return analysis;
+
+  const next = { ...analysis };
+  next.complete_project_policy = {
+    communicated: true,
+    by_architect: policyDetection.by_architect,
+    evidence: policyDetection.evidence,
+    sender: policyDetection.sender || null,
+    sent_at: policyDetection.sent_at || null
+  };
+
+  next.castigos_aplicados = filterPolicyFalsePenalties(
+    next.castigos_aplicados,
+    POLICY_FALSE_PENALTY_CASTIGO
+  );
+  next.improvement_opportunities = filterPolicyFalsePenalties(
+    next.improvement_opportunities,
+    POLICY_FALSE_PENALTY_ISSUE
+  );
+  next.alerts = filterPolicyFalsePenalties(next.alerts, POLICY_FALSE_ALERT);
+
+  if (next.architect_analysis && typeof next.architect_analysis === 'object') {
+    const arch = { ...next.architect_analysis };
+    arch.issues = filterPolicyFalsePenalties(arch.issues, POLICY_FALSE_PENALTY_ISSUE);
+    if (arch.summary && /pasiva/i.test(arch.summary)) {
+      arch.summary = arch.summary
+        .replace(/\s*,?\s*pero\s+pasiva\.?/i, '; política de proyectos completos explicada correctamente.')
+        .replace(/pasiva/i, 'alineada a política de proyectos completos');
+    }
+    if (arch.recommendation && /reactivar|seguimiento/i.test(arch.recommendation)) {
+      // mantener recomendación de seguimiento si aplica inactividad
+    } else if (arch.recommendation && /venta\s+pasiva|reto/i.test(arch.recommendation)) {
+      arch.recommendation = 'Si el cliente mostró interés en proyecto completo, proponer siguiente paso concreto (cotización, cita o medidas).';
+    }
+    next.architect_analysis = arch;
+  }
+
+  if (next.ai_agent_analysis && typeof next.ai_agent_analysis === 'object') {
+    const ai = { ...next.ai_agent_analysis };
+    ai.issues = filterPolicyFalsePenalties(ai.issues, POLICY_FALSE_PENALTY_ISSUE);
+    next.ai_agent_analysis = ai;
+  }
+
+  const spa = { ...(next.sales_process_analysis || {}) };
+  if (policyDetection.by_architect && spa.atencion_resumen && /venta\s+pasiva/i.test(spa.atencion_resumen)) {
+    spa.atencion_resumen = spa.atencion_resumen
+      .replace(/\s*,?\s*pero\s+venta\s+pasiva[^.]*\.?/i, '.')
+      .replace(/venta\s+pasiva[^.]*\.?/gi, '')
+      .trim();
+    if (['regular', 'mala'].includes(String(spa.atencion_calidad || '').toLowerCase()) &&
+        /inicial\s+correcta|pol[ií]tica|proyectos?\s+completos?/i.test(spa.atencion_resumen)) {
+      spa.atencion_calidad = 'buena';
+    }
+    if (!spa.atencion_resumen) {
+      spa.atencion_resumen = 'Explicó correctamente la política de solo proyectos completos.';
+    }
+  }
+  next.sales_process_analysis = spa;
+
+  if (next.summary && /venta\s+pasiva/i.test(next.summary) && policyDetection.by_architect) {
+    next.summary = String(next.summary)
+      .replace(/\s*;?\s*venta\s+pasiva[^.;]*/gi, '')
+      .replace(/,\s*pero\s*(?=[.;]|$)/gi, '')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+    if (/inicial\s+(fue\s+)?correcta/i.test(next.summary) && !/pol[ií]tica|proyectos?\s+completos?/i.test(next.summary)) {
+      next.summary += ' Política de solo proyectos completos comunicada correctamente.';
+    }
+  }
+
+  const passiveSignals = [
+    ...(next.architect_analysis?.issues || []),
+    ...(next.castigos_aplicados || [])
+  ].some(text => /venta\s+pasiva/i.test(String(text)));
+  if (next.venta_pasiva_detectada && !passiveSignals) {
+    next.venta_pasiva_detectada = false;
+  }
+
+  next.strengths = uniqueNonEmpty([
+    ...(Array.isArray(next.strengths) ? next.strengths : []),
+    'Política de solo proyectos completos comunicada (no penalizar declinar obra a medias)'
+  ]);
+
+  if (policyDetection.by_architect && !analysisHasGraveRisk(next)) {
+    const prevRisk = String(next.risk_level || '').toLowerCase();
+    if (['medio', 'alto', 'grave'].includes(prevRisk)) {
+      next.risk_level = 'bajo';
+      next.risk_level_adjusted_for_policy = true;
+    }
+  }
+
+  return next;
 }
 
 function mergeInactivityTagging(analysis, tagging) {
@@ -750,6 +962,17 @@ function buildAnalysisEnrichment({
       ? 'mensajes_recientes_chatwoot_mas_contexto_supabase'
       : 'solo_mensajes_recientes_chatwoot';
 
+  const completeProjectPolicy = detectCompleteProjectPolicyInMessages(recentMessages);
+  const policyInstruction = completeProjectPolicy.communicated
+    ? [
+      `POLÍTICA PROYECTOS COMPLETOS DETECTADA (${completeProjectPolicy.by_architect ? 'arquitecto/asesor' : 'saliente'}: ${completeProjectPolicy.sender || '—'}): "${(completeProjectPolicy.evidence || '').slice(0, 200)}"`,
+      'OBLIGATORIO: explicar que solo se hacen proyectos/trabajos completos (desde cero, sin obra a medias) es política de la empresa — NO es mala atención, NO es venta pasiva, NO bajar score por declinar trabajo parcial.',
+      'risk_level debe ser bajo en estos casos (no medio/alto/grave) salvo amenaza legal, Profeco, fraude u otra situación grave explícita.',
+      'NO incluir en architect_analysis.issues ni castigos_aplicados penalizaciones por "venta pasiva", "rechazó cliente" o "no atendió" cuando la causa fue política de proyectos completos.',
+      'Sí se puede evaluar por separado seguimiento posterior o inactividad (días sin contacto), pero sin mezclarlo con la explicación de política.'
+    ]
+    : [];
+
   return {
     analysis_mode: analysisMode,
     timezone: FOLLOWUP_TIMEZONE,
@@ -806,19 +1029,23 @@ function buildAnalysisEnrichment({
         nuevo_desde_ultimo_analisis: transcriptSinceLastAnalysis
       },
     quote_detection: quoteDetection || { cotizacion_enviada: false },
+    complete_project_policy: completeProjectPolicy,
     inactivity_tagging: inactivityTagging || null,
     analysis_instructions: fullHistory
       ? [
+        ...policyInstruction,
         'Playbook v2: NO resumir la conversación; evaluar desempeño comercial (lead o asesor_venta).',
         'Si el tema es posventa, garantía, instalación, diseño post-compra, cobranza o reparaciones → evaluation_scope=fuera_de_alcance.',
         'Historial COMPLETO de la conversación en transcripts.historial_completo_chatwoot.',
         'Evalúa todo el embudo visible en el chat con el cliente, no solo mensajes recientes.',
         'Aplica modelo CERRAR y castigos del playbook; marca venta_pasiva_detectada si aplica.',
+        'Política proyectos completos: si arquitecto/asesor dice que solo trabajan proyectos completos o no obra a medias, es correcto — no penalizar atención ni score por declinar trabajo parcial.',
         quoteDetection?.cotizacion_enviada
           ? `COTIZACIÓN CONFIRMADA (${quoteDetection.cotizacion_domain}): evaluation_stage=asesor_venta salvo fuera_de_alcance por posventa/garantía.`
           : 'Sin URL oficial de cotización en el historial; si solo información inicial → lead.'
       ]
       : [
+        ...policyInstruction,
         'Playbook v2: NO resumir la conversación; evaluar desempeño comercial (lead o asesor_venta).',
         'Si el tema es posventa, garantía, instalación, diseño post-compra, cobranza o reparaciones → evaluation_scope=fuera_de_alcance.',
         `Solo mensajes Chatwoot de las últimas ${windowHours} horas en transcripts.ultimas_horas_chatwoot.`,
@@ -826,6 +1053,7 @@ function buildAnalysisEnrichment({
           ? 'Historial largo en stored_historical / historico_resumido_bd; no asumir falta de contexto.'
           : 'Sin reporte previo en Supabase: evalúa con ventana reciente.',
         'Aplica modelo CERRAR y castigos del playbook; marca venta_pasiva_detectada si aplica.',
+        'Política proyectos completos: si arquitecto/asesor dice que solo trabajan proyectos completos o no obra a medias, es correcto — no penalizar atención ni score por declinar trabajo parcial.',
         quoteDetection?.cotizacion_enviada
           ? `COTIZACIÓN CONFIRMADA (${quoteDetection.cotizacion_domain}): evaluation_stage=asesor_venta salvo fuera_de_alcance por posventa/garantía.`
           : 'Sin URL oficial de cotización en ventana reciente; si solo información inicial → lead.'
@@ -1258,6 +1486,8 @@ module.exports = {
   buildAnalysisEnrichment,
   mergeQuoteDetectionIntoAnalysis,
   mergeInactivityTagging,
+  mergeCompleteProjectPolicyIntoAnalysis,
+  detectCompleteProjectPolicyInMessages,
   detectQuoteInMessages,
   buildInactivityTagging,
   rowForReport,

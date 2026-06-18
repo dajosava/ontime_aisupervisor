@@ -39,6 +39,7 @@ Reglas técnicas:
 - NO resumir la conversación; evalúa desempeño comercial (playbook v2).
 - Alcance: solo evaluation_stage lead o asesor_venta; si no, fuera_de_alcance.
 - No inventes cotización: si compute_business_facts indica cotizacion_enviada=true, reflejarlo.
+- Solo proyectos completos: si el arquitecto/asesor indica que no trabajan obra a medias o que solo hacen proyectos completos, es política de la empresa — NO catalogar como mala atención ni bajar score por eso.
 - Separa AI Agent ("${aiAgent}") y arquitectos: ${architects.join(', ')}.
 - Dominios oficiales de cotización: ${ALL_QUOTE_DOMAINS.join(', ')}.
 - No respondas al cliente; solo supervisas calidad comercial interna.
@@ -163,6 +164,7 @@ Reglas v2:
 - stage debe igualar evaluation_stage.
 - Si cotización URL oficial (enrichment), detected_funnel_stage mínimo cotizacion_enviada y evaluar como asesor_venta salvo posventa/garantía/instalación.
 - Usuario "${aiAgent}" = AI Agent. Arquitectos: ${architects.join(', ')}. Otros salientes = asesor_no_catalogado.
+- Política proyectos completos: explicar "solo trabajamos en proyectos completos" / "no obra a medias" es correcto; no marcar architect_analysis.issues ni atencion_calidad mala/regular solo por declinar trabajo parcial; risk_level=bajo (no medio) salvo situación grave explícita.
 - risk_level grave: amenaza legal, Profeco, redes, cliente pagó sin atención, múltiples insistencias sin respuesta.
 - Dominios cotización: ${ALL_QUOTE_DOMAINS.join(', ')}.
 - No inventar hechos.`;

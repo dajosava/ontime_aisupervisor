@@ -1223,9 +1223,9 @@ function renderReportRow(report) {
     report.architect_recommendation,
     `Arquitecto(s): ${architectNames}`
   );
-  const url = report.conversation_url
-    ? `<a class="conv-link" href="${escAttr(report.conversation_url)}" target="_blank" rel="noopener noreferrer">Abrir conversación</a>`
-    : '';
+  const reanalyzeBtn = `<button type="button" class="btn btn-secondary btn-sm btn-report-reanalyze" data-conversation-id="${escAttr(String(report.conversation_id))}" onclick="event.stopPropagation(); reanalyzeReportFullHistory(${Number(report.conversation_id)})" title="Trae todos los mensajes de Chatwoot y actualiza este reporte">
+        Reanalizar historial completo
+      </button>`;
   const analyzed = report.analyzed_at
     ? new Date(report.analyzed_at).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' })
     : '—';
@@ -1234,43 +1234,52 @@ function renderReportRow(report) {
     salesProcessSectionReport(report),
     aiAgentBlock,
     architectBlock,
-    `<div class="report-row-recommendation"><strong>Recomendación:</strong> ${escHtml(report.recommendation || '—')}</div>`,
-    `<div class="report-row-actions">
-      <button type="button" class="btn btn-secondary btn-sm btn-report-reanalyze" data-conversation-id="${escAttr(String(report.conversation_id))}" onclick="reanalyzeReportFullHistory(${Number(report.conversation_id)})" title="Trae todos los mensajes de Chatwoot y actualiza este reporte">
-        Reanalizar historial completo
-      </button>
-      ${url}
-    </div>`
+    `<div class="report-row-recommendation"><strong>Recomendación:</strong> ${escHtml(report.recommendation || '—')}</div>`
   ].join('');
+
+  const openConvBtn = report.conversation_url
+    ? `<a class="btn btn-secondary btn-sm btn-open-conversation conv-link" href="${escAttr(report.conversation_url)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">Abrir conversación</a>`
+    : '';
+
+  const toolbarActions = `<div class="report-row-toolbar-actions" onclick="event.stopPropagation()">
+          ${reanalyzeBtn}
+          ${openConvBtn}
+        </div>`;
 
   const detailsHtml = detailBlocks.trim()
     ? `<details class="report-row-details">
-        <summary class="report-row-summary-toggle">
-          <span class="report-row-toggle-closed">Ver análisis completo</span>
-          <span class="report-row-toggle-open">Ocultar detalle</span>
+        <summary>
+          <span class="btn btn-secondary btn-sm report-row-summary-toggle">
+            <span class="report-row-toggle-closed">Ver análisis completo</span>
+            <span class="report-row-toggle-open">Ocultar detalle</span>
+          </span>
+          ${toolbarActions}
         </summary>
         <div class="report-row-details-inner">
           ${detailBlocks}
         </div>
       </details>`
-    : '';
+    : `<div class="report-row-details" style="border-top:1px solid var(--border-subtle);margin-top:12px;padding-top:8px">
+        <div class="report-row-toolbar-actions" style="margin-left:0;justify-content:flex-start">
+          ${reanalyzeBtn}
+          ${openConvBtn}
+        </div>
+      </div>`;
 
   return `
     <article class="report-row">
-      <header class="report-row-header">
-        <div>
-          <h4 class="report-row-title">${escHtml(title)}</h4>
-          <div class="report-row-meta">${escHtml(analyzed)} · Score ${escHtml(score)} · Conv. ${escHtml(String(report.conversation_id))}</div>
-        </div>
+      <div class="report-row-head">
+        <h4 class="report-row-title">${escHtml(title)}</h4>
         <div class="report-row-badges">
           ${stageBadge(report.stage)}
           ${cotizacionEnviadaBadge(report)}
           ${inactiveInterestBadge(report)}
           ${riskBadge(report.risk_level)}
         </div>
-      </header>
+        <div class="report-row-meta">${escHtml(analyzed)} · Score ${escHtml(score)} · Conv. ${escHtml(String(report.conversation_id))}</div>
+      </div>
+      <p class="report-row-lead">${escHtml(report.summary || 'Sin resumen.')}</p>
       <div class="report-row-body">
-        <p class="report-row-lead">${escHtml(report.summary || 'Sin resumen.')}</p>
         ${formatAlertsBlock(report)}
         ${detailsHtml}
       </div>

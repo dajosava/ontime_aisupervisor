@@ -30,6 +30,15 @@ On Time Cocinas vende cocinas y closets completos a medida.
 
 No vendemos reparaciones menores. No hacemos remodelaciones parciales. No arreglamos muebles existentes. Remodelación = reemplazo completo de cocina o closet.
 
+**Política de proyectos completos (NO penalizar):**
+
+- La empresa **solo trabaja en proyectos completos** (cocina o closet integral a medida). **No** atiende obra a medias, trabajos parciales, solo cambiar una parte, ni arreglos puntuales de muebles existentes sin proyecto completo.
+- Si un **arquitecto o asesor** le indica al cliente que *"solo trabajamos en proyectos completos"*, *"solo realizamos trabajos completos desde cero"*, *"no trabajamos obra a medias"*, *"no hacemos remodelaciones parciales"* o equivalente, eso es **política comercial correcta**, no mala atención.
+- **No** castigar score, **no** marcar `atencion_calidad` como mala/regular, **no** incluir en `architect_analysis.issues` ni en alertas por ese motivo.
+- **No** usar `risk_level` medio, alto ni grave solo por declinar obra a medias o un proyecto que no sea integral desde cero; en esos casos usar **bajo** (salvo amenaza legal, Profeco, fraude, etc.).
+- Si lo explicó con claridad y ofreció camino hacia proyecto completo (cotización, cita, medidas, showroom), puede ser **fortaleza** o atención **buena/excelente**.
+- Solo es problema si fue grosero, evasivo sin alternativa, o dejó al cliente sin siguiente paso cuando sí había interés en proyecto completo.
+
 Beneficios principales:
 
 - Entrega en 15 días hábiles
@@ -97,6 +106,7 @@ Aplicar estos topes de score aunque el tono haya sido amable. Si aplica más de 
 - Si el cliente pidió cita y no se intentó cerrar horario: score máximo 55.
 - Si el cliente envió medidas, foto o plano y nadie humano retomó: score máximo 55.
 - Si el cliente preguntó algo directo y no se respondió: score máximo 55.
+- **Excepción:** si el cliente pidió obra parcial / a medias y el asesor explicó correctamente la política de proyectos completos con respeto → **no** aplicar castigo por "no atender" ese pedido parcial.
 - Si el cliente preguntó ubicación/cobertura y se respondió con discurso genérico: score máximo 60.
 - Si solo hay bot y el cliente mostró interés real: score máximo 70.
 - Si el bot dio beneficios pero no pidió datos ni cita: score máximo 70.
@@ -140,6 +150,7 @@ Si compute_business_facts indica cotizacion_enviada=true, tratar como asesor_ven
 - Cliente confundido y asesor no simplifica decisión: máx 55
 - Promete diseño completo antes de contrato/anticipo: máx 45
 - Mezcla posventa/instalación con venta nueva sin marcar fuera_de_alcance: revisar scope
+- **Excepción:** explicar política de "solo proyectos completos" / "no obra a medias" no es venta pasiva ni mala atención; evaluar tono y si ofreció alternativa de proyecto integral
 
 ## SALIDA DEL ANÁLISIS
 

@@ -3,7 +3,9 @@ const { OPENAI_MODEL } = require('../services/openai.service');
 const { analyzeWithOpenAI } = require('../services/openai.service');
 const {
   mergeQuoteDetectionIntoAnalysis,
-  mergeInactivityTagging
+  mergeInactivityTagging,
+  mergeCompleteProjectPolicyIntoAnalysis,
+  detectCompleteProjectPolicyInMessages
 } = require('../services/supervisor.service');
 const {
   getSupervisorSystemPrompt,
@@ -71,6 +73,11 @@ async function runLegacyFallbackFromContext(ctx, params) {
   });
   analysis = mergeQuoteDetectionIntoAnalysis(analysis, ctx.cache.quoteDetection);
   analysis = mergeInactivityTagging(analysis, ctx.cache.inactivityTagging);
+  analysis = mergeCompleteProjectPolicyIntoAnalysis(
+    analysis,
+    ctx.cache.enrichment?.complete_project_policy ||
+      detectCompleteProjectPolicyInMessages(ctx.cache.recentMessages || [])
+  );
 
   ctx.finalAnalysis = analysis;
   ctx.toolTrace.push({

@@ -841,15 +841,15 @@
   }
 
   .reports-branch-block {
-    margin-bottom: 32px;
+    margin-bottom: 20px;
   }
 
   .reports-branch-head {
     display: flex;
     align-items: center;
-    gap: 12px;
-    margin-bottom: 16px;
-    padding-bottom: 10px;
+    gap: 10px;
+    margin-bottom: 10px;
+    padding-bottom: 6px;
     border-bottom: 1px solid var(--border);
   }
 
@@ -866,14 +866,14 @@
   }
 
   .reports-risk-section {
-    margin-bottom: 20px;
+    margin-bottom: 12px;
   }
 
   .reports-risk-head {
     display: flex;
     align-items: center;
-    gap: 10px;
-    margin-bottom: 10px;
+    gap: 8px;
+    margin-bottom: 6px;
   }
 
   .reports-risk-title {
@@ -888,63 +888,94 @@
   .reports-list {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 6px;
   }
 
   .report-row {
     width: 100%;
     border: 1px solid var(--border);
-    border-radius: 12px;
+    border-radius: 8px;
     background: var(--surface);
-    box-shadow: var(--shadow-sm);
+    box-shadow: none;
     overflow: hidden;
   }
 
-  .report-row-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 16px;
-    flex-wrap: wrap;
-    padding: 14px 20px;
+  /* Fila 1: título + badges (una línea) | Fila 2: meta ancho completo */
+  .report-row-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "title badges"
+      "meta  meta";
+    gap: 1px 8px;
+    padding: 5px 10px 4px;
     background: var(--surface-header);
     border-bottom: 1px solid var(--border);
   }
 
   .report-row-title {
-    font-size: 16px;
+    grid-area: title;
+    font-size: 14px;
     font-weight: 700;
     margin: 0;
     color: var(--text);
-    line-height: 1.3;
+    line-height: 1.2;
   }
 
   .report-row-meta {
+    grid-area: meta;
     font-family: var(--mono);
-    font-size: 12px;
+    font-size: 10px;
     color: var(--text);
-    margin-top: 4px;
-    line-height: 1.4;
+    margin: 0;
+    line-height: 1.25;
   }
 
   .report-row-badges {
+    grid-area: badges;
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     align-items: center;
-    gap: 6px;
+    gap: 3px;
     justify-content: flex-end;
+    justify-self: end;
+    align-self: center;
+    min-width: 0;
+    max-width: none;
+  }
+
+  .report-row-badges .badge {
+    flex-shrink: 0;
+    padding: 3px 9px;
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+  }
+
+  /* Segunda fila del bloque: resumen a ancho completo, encima de alertas */
+  .report-row-lead {
+    font-size: 13px;
+    line-height: 1.4;
+    margin: 0;
+    padding: 4px 10px 2px;
+    color: var(--text);
+    max-width: none;
   }
 
   .report-row-body {
-    padding: 18px 20px 14px;
+    padding: 0 10px 6px;
   }
 
-  .report-row-lead {
-    font-size: 15px;
-    line-height: 1.75;
-    margin: 0 0 14px;
-    color: var(--text);
-    max-width: none;
+  .report-row-body > .supervisor-alerts:first-child {
+    margin-top: 2px;
+  }
+
+  .report-row-body > .report-row-details:first-child {
+    margin-top: 4px;
+  }
+
+  .report-row p {
+    margin: 0;
   }
 
   .report-row-block {
@@ -952,8 +983,8 @@
   }
 
   .report-row .supervisor-card-section {
-    margin-top: 12px;
-    padding: 12px 16px 12px 18px;
+    margin-top: 8px;
+    padding: 8px 12px 8px 14px;
   }
 
   .report-row-block-title {
@@ -1025,41 +1056,89 @@
   }
 
   .report-row .supervisor-alerts {
-    margin: 0 0 0;
+    margin: 0;
+    padding: 4px 8px;
+    line-height: 1.35;
+    border-radius: 6px;
+  }
+
+  .report-row .supervisor-alerts-text,
+  .report-row .supervisor-alerts-label {
+    font-size: 12px;
+    line-height: 1.35;
   }
 
   .report-row-details {
-    margin-top: 12px;
-    border-top: 1px solid var(--border-subtle);
+    margin-top: 4px;
+    padding-top: 0;
   }
 
   .report-row-details > summary {
     list-style: none;
     cursor: pointer;
-    font-family: var(--mono);
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--accent);
-    padding: 10px 0 8px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 6px;
+    padding: 2px 0 0;
     user-select: none;
-    line-height: 1.4;
+    line-height: 1.2;
   }
 
   .report-row-details > summary::-webkit-details-marker {
     display: none;
   }
 
-  .report-row-details > summary::before {
-    content: '▸ ';
-    font-size: 11px;
+  .report-row-summary-toggle {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+    margin-right: 0;
+    font-family: var(--sans);
+    font-weight: 600;
+    white-space: nowrap;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
   }
 
-  .report-row-details[open] > summary::before {
+  .report-row-summary-toggle::before {
+    content: '▸ ';
+    font-size: 10px;
+    opacity: 0.85;
+  }
+
+  .report-row-details[open] .report-row-summary-toggle::before {
     content: '▾ ';
   }
 
-  .report-row-details > summary:hover {
-    color: var(--accent-hover);
+  .report-row-details > summary:hover .report-row-summary-toggle {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-soft);
+  }
+
+  .report-row-toolbar-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    margin-left: auto;
+  }
+
+  .report-row-toolbar-actions .btn-report-reanalyze,
+  .report-row-toolbar-actions .btn-open-conversation,
+  .report-row-summary-toggle {
+    flex-shrink: 0;
+    cursor: pointer;
+  }
+
+  a.btn-open-conversation {
+    display: inline-flex;
+    align-items: center;
+    text-decoration: none;
+    white-space: nowrap;
   }
 
   .report-row-toggle-open { display: none; }
@@ -1069,14 +1148,13 @@
   .report-row-details[open] .report-row-toggle-open { display: inline; }
 
   .report-row-details-inner {
-    padding: 4px 0 8px;
+    padding: 0;
   }
 
-  .report-row-details-inner .report-row-actions {
-    margin-top: 16px;
-    padding: 14px 0 0;
-    border-top: 1px solid var(--border);
-    background: transparent;
+  .report-row-details[open] .report-row-details-inner {
+    border-top: 1px solid var(--border-subtle);
+    margin-top: 4px;
+    padding-top: 6px;
   }
 
   .report-row-actions {
@@ -1588,6 +1666,10 @@
     margin-left: auto;
   }
 
+  .report-row-details .report-row-summary-toggle.btn-sm {
+    margin-left: 0;
+  }
+
   .supervisor-debug-head {
     display: flex;
     align-items: center;
@@ -1819,23 +1901,20 @@
 
     .reports-panel-sub { font-size: var(--text-base); }
 
-    .reports-list { gap: 18px; }
+    .reports-list { gap: 8px; }
 
-    .report-row-header { padding: 16px 24px; }
+    .report-row-head { padding: 6px 12px 5px; }
 
-    .report-row-body { padding: 20px 24px 16px; }
+    .report-row-lead { font-size: 14px; line-height: 1.42; padding: 4px 12px 2px; }
 
-    .report-row-lead { font-size: 16px; line-height: 1.8; }
+    .report-row-body { padding: 0 12px 8px; }
 
-    .report-row-text { font-size: 15px; line-height: 1.8; }
+    .report-row-title { font-size: 15px; }
 
-    .report-row-facts { gap: 12px 36px; }
-
-    .report-fact { font-size: 15px; flex-basis: 380px; }
-
-    .report-row-title { font-size: 18px; }
-
-    .report-row-actions { padding: 14px 24px; }
+    .report-row-badges .badge {
+      font-size: 12px;
+      padding: 4px 10px;
+    }
 
     .reports-branch-name { font-size: 18px; }
 
@@ -1969,16 +2048,37 @@
       --panel-pad: 29px;
     }
 
-    .report-row-lead { font-size: 17px; }
+    .report-row-lead { font-size: 14px; }
 
     .report-row-text,
-    .report-fact { font-size: 16px; }
+    .report-fact { font-size: 13px; }
   }
 
   @media (max-width: 640px) {
     .config-grid { grid-template-columns: 1fr; }
     .stats-row { grid-template-columns: 1fr; }
     :root { --text-xl: 22px; }
+
+    .report-row-head {
+      grid-template-areas:
+        "title title"
+        "badges badges"
+        "meta meta";
+      gap: 4px;
+    }
+
+    .report-row-badges {
+      grid-row: auto;
+      justify-self: stretch;
+      justify-content: flex-start;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+    }
+
+    .report-row-badges::-webkit-scrollbar {
+      display: none;
+    }
   }
 
   /* Tabla operativa: scroll horizontal solo en pantallas estrechas */
